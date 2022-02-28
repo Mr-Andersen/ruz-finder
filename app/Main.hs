@@ -1,7 +1,7 @@
 module Main where
 
 import Control.Applicative
--- import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class
 import Data.Foldable (for_)
 -- import Data.Traversable (for)
 -- import Data.Function ((&))
@@ -76,36 +76,42 @@ parseByCity = many do
         pure (ByLoc loc people)
     pure (ByCity city byLoc)
 
-data RuzResult = RuzResult
+data QueryResult = QueryResult
     { label :: Text
     , description :: Text }
     deriving (Generic)
 
-reqRuz :: Text -> IO [RuzResult]
-reqRuz query = do
-    let url = https "ruz.hse.ru" /: "api" /: "search"
-    runReq defaultHttpConfig
-        (req GET url NoReqBody (jsonResponse @[RuzResult])
-            ("term" =: query <> "type" =: ("student" :: Text)))
-        <&> responseBody
+instance FromJSON QueryResult
 
-instance FromJSON RuzResult
+class QueryPerson s where
+    query :: MonadIO io => s -> Text -> io [QueryResult]
+
+data Ruz = Ruz
+instance QueryPerson Ruz where
+    query Ruz queryLine = do
+        let url = https "ruz.hse.ru" /: "api" /: "search"
+        runReq defaultHttpConfig
+            (req GET url NoReqBody (jsonResponse @[QueryResult])
+                ("term" =: queryLine <> "type" =: ("student" :: Text)))
+            <&> responseBody
+
+permutFullNames :: [PerPerson] -> [PerPerson]
+permutFullNames perPerson =
+    concat $ perPerson
+        <&> \(PerPerson (Person fullName i) city loc) -> permutations (T.splitOn " " fullName)
+            <&> \wordSeq -> let fullName' = T.intercalate " " wordSeq in
+                PerPerson (Person fullName' i) city loc
 
 withRuz :: [PerPerson] -> IO [PerPerson]
-withRuz perPerson =
-    let perPerson' = concat $ perPerson
-            <&> \(PerPerson (Person fullName i) city loc) -> permutations (T.splitOn " " fullName)
-                <&> \wordSeq -> let fullName' = T.intercalate " " wordSeq in
-                    PerPerson (Person fullName' i) city loc
-     in do
-        pb <- newProgressBar def { pgFormat = "Quering RUZ :percent [:bar] :current/:total (:elapseds/~:etas)"
-                                 , pgTotal = toInteger (length perPerson)
-                                 }
-        concat <$> withTaskGroup 4 \g -> flip (mapConcurrently g) perPerson'
-            \(PerPerson (Person fullName' _) city loc) ->
-                (reqRuz fullName' <* tick pb)
-                    <&> fmap \(RuzResult lbl descr) ->
-                              PerPerson (Person lbl descr) city loc
+withRuz perPerson = do
+    pb <- newProgressBar def { pgFormat = "Quering RUZ :percent [:bar] :current/:total (:elapseds/~:etas)"
+                             , pgTotal = toInteger (length perPerson)
+                             }
+    concat <$> withTaskGroup 4 \g -> flip (mapConcurrently g) (permutFullNames perPerson)
+        \(PerPerson (Person fullName _) city loc) ->
+            (query Ruz fullName <* tick pb)
+                <&> fmap \(QueryResult lbl descr) ->
+                          PerPerson (Person lbl descr) city loc
 
 selectBody :: Selector
 selectBody = "div" @: (hasClass <$> ["field", "field-name-body", "field-type-text-with-summary", "field-label-hidden"])
