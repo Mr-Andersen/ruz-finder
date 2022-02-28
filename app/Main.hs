@@ -1,55 +1,118 @@
-{-# LANGUAGE Strict #-}
-
 module Main where
 
 import Control.Applicative
-import Control.Exception (assert)
-import Control.Monad.IO.Class (liftIO)
+-- import Control.Monad.IO.Class (liftIO)
+import Data.Foldable (for_)
+-- import Data.Traversable (for)
+-- import Data.Function ((&))
+import Data.Functor ((<&>))
+import Data.Maybe (fromMaybe)
+import Data.List (permutations)
+
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
+
 import Text.HTML.Scalpel
 
-import Text.Regex.Base
-import Text.Regex.PCRE ((=~), configUTF8)
+import Text.RE.TDFA.Text as P
 
-newtype Person = Person { unPerson :: Text }
+import GHC.Generics (Generic)
+import Data.Aeson (FromJSON)
+
+import Network.HTTP.Req
+
+import Control.Concurrent.Async.Pool
+
+import System.Console.AsciiProgress
+
+data Person = Person { _fullName :: Text, _info :: Text }
 instance Show Person where
-    show (Person x) = "Person: " ++ T.unpack x
+    show (Person p i) = "Person: " ++ T.unpack p ++ "(" ++ T.unpack i ++ ")"
 
-newtype Location = Location { unLocation :: Text }
+data Location = Location Text | LocationUnknown
 instance Show Location where
     show (Location x) = "Location: " ++ T.unpack x
+    show LocationUnknown = "Location: ?"
+locToCsv :: Location -> Text
+locToCsv (Location x) = x
+locToCsv LocationUnknown = ""
 
 newtype City = City { unCity :: Text }
 instance Show City where
     show (City x) = "City: " ++ T.unpack x
 
-data ByCity = ByCity { _city :: City, _byLoc :: [ByLoc] }
-    deriving (Show)
 data ByLoc = ByLoc { _loc :: Location, _people :: [Person] }
     deriving (Show)
+data ByCity = ByCity { _city :: City, _byLoc :: [ByLoc] }
+    deriving (Show)
 
--- takeWhileCan :: Monad m => m (Either e a) -> m ([a], e)
--- takeWhileCan
+data PerPerson = PerPerson Person City Location
+
+flattenByCity :: [ByCity] -> [PerPerson]
+flattenByCity byCity = do
+    ByCity city byLoc <- byCity
+    ByLoc loc people <- byLoc
+    person <- people
+    pure (PerPerson person city loc)
+
+perPersonToCsv :: PerPerson -> Text
+perPersonToCsv (PerPerson (Person fullName info) (City city) loc) =
+    T.intercalate "," [fullName, info, city, locToCsv loc]
+
+byCityToCsv :: [ByCity] -> [Text]
+byCityToCsv byCity = flattenByCity byCity <&> perPersonToCsv
 
 parseByCity :: SerialScraperT Text IO [ByCity]
 parseByCity = many do
     city <- City <$> seekNext (text "h2")
     byLoc <- many do
-        loc <- Location <$> seekNext (text "h3")
+        locRaw <- seekNext (text "h3")
+        let loc = if "неизвестно" `T.isInfixOf` locRaw then LocationUnknown else Location locRaw
         peopleRaw <- seekNext (text "p")
-        let pattern = "[А-ЯЁ][а-яё]+[\\- ][А-ЯЁ][а-яё]+" :: String
-        liftIO $ T.putStrLn peopleRaw
-        let people = Person . T.pack <$> getAllTextMatches (T.unpack peopleRaw =~ pattern)
-        liftIO $ print (length people)
+        let pattern = [re|[А-ЯЁ][а-яё]+(-| )[А-ЯЁ][а-яё]+|]
+        let fullNames = P.matches (peopleRaw *=~ pattern)
+        let people = flip Person "" <$> fullNames
         pure (ByLoc loc people)
     pure (ByCity city byLoc)
+
+data RuzResult = RuzResult
+    { label :: Text
+    , description :: Text }
+    deriving (Generic)
+
+reqRuz :: Text -> IO [RuzResult]
+reqRuz query = do
+    let url = https "ruz.hse.ru" /: "api" /: "search"
+    runReq defaultHttpConfig
+        (req GET url NoReqBody (jsonResponse @[RuzResult])
+            ("term" =: query <> "type" =: ("student" :: Text)))
+        <&> responseBody
+
+instance FromJSON RuzResult
+
+withRuz :: [PerPerson] -> IO [PerPerson]
+withRuz perPerson =
+    let perPerson' = concat $ perPerson
+            <&> \(PerPerson (Person fullName i) city loc) -> permutations (T.splitOn " " fullName)
+                <&> \wordSeq -> let fullName' = T.intercalate " " wordSeq in
+                    PerPerson (Person fullName' i) city loc
+     in do
+        pb <- newProgressBar def { pgFormat = "Quering RUZ :percent [:bar] :current/:total (:elapseds/~:etas)"
+                                 , pgTotal = toInteger (length perPerson)
+                                 }
+        concat <$> withTaskGroup 4 \g -> flip (mapConcurrently g) perPerson'
+            \(PerPerson (Person fullName' _) city loc) ->
+                (reqRuz fullName' <* tick pb)
+                    <&> fmap \(RuzResult lbl descr) ->
+                              PerPerson (Person lbl descr) city loc
 
 selectBody :: Selector
 selectBody = "div" @: (hasClass <$> ["field", "field-name-body", "field-type-text-with-summary", "field-label-hidden"])
 
 main :: IO ()
-main = assert configUTF8 do
+main = displayConsoleRegions do
     rawHtml <- T.readFile "raw.html"
-    scrapeStringLikeT rawHtml (chroot selectBody (inSerial parseByCity)) >>= print
+    parsed <- fromMaybe [] <$> scrapeStringLikeT rawHtml (chroot selectBody (inSerial parseByCity))
+    withR <- withRuz (flattenByCity parsed)
+    for_ withR (T.putStrLn . perPersonToCsv)
