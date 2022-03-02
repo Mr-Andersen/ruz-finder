@@ -20,14 +20,23 @@ executable ruz-finder
   ghc-options:         -O2 -Wall -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
   default-extensions:  BlockArguments
+                     , DataKinds
                      , DeriveGeneric
-                     , ImportQualifiedPost
+                     , DeriveFunctor
+                     , ExistentialQuantification
                      , FlexibleInstances
+                     , FlexibleContexts
+                     , FunctionalDependencies
+                     , ImportQualifiedPost
                      , OverloadedStrings
+                     , KindSignatures
+                     , MultiParamTypeClasses
                      , QuasiQuotes
                      , Rank2Types
                      , ScopedTypeVariables
+                     , TupleSections
                      , TypeApplications
+                     , TypeFamilies
                      , UnicodeSyntax
   build-depends:       base, text, containers
                      , req, aeson
@@ -35,4 +44,5 @@ executable ruz-finder
                      , regex
                      , async-pool
                      , ascii-progress
+                     -- , generic-deriving
                      -- , regex-base, regex-pcre
