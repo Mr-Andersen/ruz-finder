@@ -14,7 +14,7 @@ import Data.Functor ((<&>))
 
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.IO qualified as T
+-- import Data.Text.IO qualified as T
 
 import GHC.Generics (Generic)
 import Data.Aeson
@@ -181,7 +181,7 @@ executeCode :: (MonadHttp m, FromJSON response) => Text -> VKT m (Either Text re
 executeCode c = do
     -- liftIO $ T.putStrLn c
     resp <- reqVK Execute (ExecuteRequest c)
-    liftIO $ print resp
+    -- liftIO $ print resp
     pure case parseEither parseJSON <$> resp of
         Right (Right ok) -> Right ok
         Right (Left err) -> Left (T.pack err)

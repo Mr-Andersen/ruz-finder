@@ -2,7 +2,7 @@ module OVD.Types where
 
 import Control.Category ((>>>))
 -- import Data.Function ((&))
-import Data.Functor ((<&>))
+-- import Data.Functor ((<&>))
 
 import Data.Char (isAlpha, isSpace)
 
@@ -35,6 +35,9 @@ data ByCity f = ByCity { _city :: City, _byLoc :: [ByLoc f] }
 
 data PerPerson f = PerPerson (Person f) [VK.UserId] City Location
 
+perPersonFullName :: PerPerson f -> f
+perPersonFullName (PerPerson (Person f _) _ _ _) = f
+
 flattenByCity :: [ByCity f] -> [PerPerson f]
 flattenByCity byCity = do
     ByCity city byLoc <- byCity
@@ -50,8 +53,8 @@ perPersonToCsv (PerPerson (Person fullName info) uids (City city) loc) =
                       , info, city, locToCsv loc
                       ]
 
-byCityToCsv :: [ByCity Text] -> [Text]
-byCityToCsv byCity = flattenByCity byCity <&> perPersonToCsv
+-- byCityToCsv :: [ByCity Text] -> [Text]
+-- byCityToCsv byCity = flattenByCity byCity <&> perPersonToCsv
 
 trimFullName :: Text -> Text
 trimFullName = T.unpack
