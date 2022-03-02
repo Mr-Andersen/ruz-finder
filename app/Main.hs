@@ -5,9 +5,10 @@ import Prelude hiding (id)
 import Control.Monad.IO.Class
 import Data.Foldable (for_)
 -- import Data.Traversable (for)
--- import Data.Function ((&))
+import Data.Function ((&))
 import Data.Functor ((<&>))
 import Data.List (permutations)
+import Data.List.Split (chunksOf)
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Traversable (for)
 
@@ -24,6 +25,7 @@ import System.Console.AsciiProgress
 
 import Control.Monad.Memo
 
+import Consts
 import OVD.Types
 import OVD.HTML
 import QueryPerson
@@ -33,7 +35,7 @@ import VK
 permutFullNames :: [PerPerson Text] -> [PerPerson [Text]]
 permutFullNames perPerson =
     concat $ perPerson
-        <&> \(PerPerson (Person fullName i) uids city loc) -> permutations (T.splitOn " " fullName)
+        <&> \(PerPerson (Person fullName i) uids city loc) -> permutations (T.words fullName)
             <&> \fullNameWords -> PerPerson (Person fullNameWords i) uids city loc
 
 withRuz :: MonadIO io => [PerPerson Text] -> io [PerPerson Text]
@@ -47,40 +49,6 @@ withRuz perPerson = liftIO do
                 <&> fmap \(QueryResult lbl descr) ->
                           PerPerson (Person lbl descr) uids city loc
 
-hseGroups :: [(Text, GroupId)]
-hseGroups =
-    fmap GroupId <$>
-        [ ("hsemem", 139105204)
-        , ("prostpolitika", 160121249)
-        , ("ombudsman_hse", 203966578)
-        , ("hse_overheard", 57354358)
-        , ("curatorhse", 128354471)
-        , ("hse_cc", 185974612)
-        , ("hseapp", 150048323)
-        , ("hse_digital", 203687363)
-        , ("hse_social", 165826930)
-        , ("studsovetgsb", 135324713)
-        , ("hsenn_career", 41221467)
-        , ("ideal_hse", 185550746)
-        , ("permhsecouncil", 122981522)
-        , ("hse_go", 37731763)
-        , ("hse_mezhcampus", 89964203)
-        , ("studentdiscussion", 189288871)
-        , ("hsecouncil_fandom", 207486284)
-        , ("bakalavrik_hse_art_and_design", 196937408)
-        , ("hsedesign", 21317467)
-        , ("pravohseru", 4565)
-        , ("doxajournal", 128503206)
-        , ("patsanskoepravo", 130311951)
-        , ("vsheviypolit", 171209032)
-        , ("hsecouncil", 64952366) ]
-
-accessToken :: Text
-accessToken = "bcea24a641ab3935996574bfd873a09e722c0aca4131362dec5403ae3eec233389b5b5258cb399bc50e7b"
-
-hseUniId :: UniversityId
-hseUniId = UniversityId 128
-
 findHseGroupsIn :: Set GroupId -> [(Text, GroupId)]
 findHseGroupsIn grps = filter (\(_, gid) -> gid `Set.member` grps) hseGroups
 
@@ -91,9 +59,17 @@ matchId :: VKAccMatch -> UserId
 matchId (MatchUni uid) = uid
 matchId (GroupsMatch uid _) = uid
 
+getSubscriptionsScript :: [UserId] -> Text
+getSubscriptionsScript uids =
+    "return [" <> T.intercalate ","
+                    ((\(UserId uid) ->
+                        "API.users.getSubscriptions({\"user_id\":" <> T.pack (show uid) <> "}).groups.items")
+                     <$> uids) <> "];"
+
 findVKAccount :: MonadIO io => Text -> io [VKAccMatch]
-findVKAccount fullName = runVKTIO accessToken do
-    liftIO (T.putStrLn fullName)
+findVKAccount fullName' = runVKTIO accessToken do
+    -- Most VK users have only surname and name
+    let fullName = fullName' & T.words & take 2 & T.unwords
     usrsRes <- usersSearch (UsersSearchRequest (Just fullName) Nothing)
     usrs <- case usrsRes of
         Right ok -> pure ( ok)
@@ -106,12 +82,21 @@ findVKAccount fullName = runVKTIO accessToken do
         pb <- liftIO $ newProgressBar def { pgFormat = "Getting subs :percent [:bar] :current/:total elapsed :elapseds, ETA :etas"
                                           , pgTotal = toInteger (length usrsNoUni)
                                           }
-        catMaybes <$> for usrsNoUni \(User uid _ _ _) -> do
-            subsRes <- getSubscriptions (GetSubscriptionsRequest uid)
-            liftIO (tick pb)
-            case Set.fromList <$> subsRes of
-                Right subs | length (findHseGroupsIn subs) > 0 -> pure (Just (uid, findHseGroupsIn subs))
-                _ -> pure Nothing
+        concat <$> for (chunksOf 25 (userId <$> usrsNoUni)) \uidChunk -> do
+            let script = getSubscriptionsScript uidChunk
+            (execRes :: Either Text [[GroupId]]) <- executeCode script
+            liftIO $ tickN pb (length uidChunk)
+            catMaybes <$> case (zip uidChunk . fmap Set.fromList) <$> execRes of
+                Right pairs -> pure $ pairs <&> \(uid, subs) ->
+                                        if length (findHseGroupsIn subs) > 0
+                                            then Just (uid, findHseGroupsIn subs)
+                                            else Nothing
+                Left err -> Prelude.error $ T.unpack err
+            -- subsRes <- getSubscriptions (GetSubscriptionsRequest uid)
+            -- liftIO (tick pb)
+            -- case Set.fromList <$> subsRes of
+            --     Right subs | length (findHseGroupsIn subs) > 0 -> pure (Just (uid, findHseGroupsIn subs))
+            --     _ -> pure Nothing
     pure $ fmap (MatchUni . userId) usrsWithUni
             ++ fmap (\(uid, grps) -> GroupsMatch uid grps) usrsWithGrps
 
@@ -129,5 +114,6 @@ main :: IO ()
 main = displayConsoleRegions do
     rawHtml <- T.readFile "raw.html"
     parsed <- parseByCity rawHtml
-    final <- withRuz (flattenByCity parsed) >>= withVK
+    let flattened = flattenByCity parsed
+    final <- withRuz flattened >>= withVK . trimFullNames
     for_ final (T.putStrLn . perPersonToCsv)

@@ -15,7 +15,7 @@ cabal-version:       >=1.10
 
 executable ruz-finder
   main-is:             Main.hs
-  other-modules:       OVD.Types OVD.HTML QueryPerson Ruz VK
+  other-modules:       OVD.Types OVD.HTML QueryPerson Ruz VK Consts
   hs-source-dirs:      app
   ghc-options:         -O2 -Wall -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
@@ -38,7 +38,7 @@ executable ruz-finder
                      , TypeApplications
                      , TypeFamilies
                      , UnicodeSyntax
-  build-depends:       base, text, containers
+  build-depends:       base, text, containers, split
                      , req, aeson
                      , scalpel
                      , regex

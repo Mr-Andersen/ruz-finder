@@ -17,7 +17,7 @@ instance QueryPerson Ruz where
         let url = https "ruz.hse.ru" /: "api" /: "search"
         runReq defaultHttpConfig
             (req GET url NoReqBody (jsonResponse @[QueryResult])
-                ("term" =: T.intercalate " " queryWords <> "type" =: ("student" :: Text)))
+                ("term" =: T.unwords queryWords <> "type" =: ("student" :: Text)))
             <&> responseBody
-            <&> filter (\(QueryResult lbl _) -> let lblWords = T.splitOn " " lbl
+            <&> filter (\(QueryResult lbl _) -> let lblWords = T.words lbl
                                                  in Set.fromList queryWords `Set.isSubsetOf` Set.fromList lblWords)

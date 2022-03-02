@@ -13,11 +13,12 @@ import Data.Functor ((<&>))
 -- import Data.Proxy
 
 import Data.Text (Text)
--- import Data.Text qualified as T
--- import Data.Text.IO qualified as T
+import Data.Text qualified as T
+import Data.Text.IO qualified as T
 
 import GHC.Generics (Generic)
 import Data.Aeson
+import Data.Aeson.Types (parseEither)
 
 import Control.Concurrent (threadDelay)
 import Network.HTTP.Req
@@ -62,18 +63,18 @@ class FromJSON response => VKEndoint endpoint request response | endpoint -> req
                                                                , endpoint -> response where
     path :: endpoint -> Text
     requestToOption :: endpoint -> request -> Option 'Https
-    maxCount :: endpoint -> Integer
+    maxCount :: endpoint -> Maybe Integer
 
 -- reqVK :: FromJSON (w a) => Text -> Option 'Https -> VKT m (w a)
-reqVK :: MonadHttp m => VKEndoint endpoint request response => endpoint -> request -> VKT m (Either Text response)
+reqVK :: (MonadHttp m, VKEndoint endpoint request response) => endpoint -> request -> VKT m (Either Text response)
 reqVK e reqData = VKT $ \config -> do
     let opt = requestToOption e reqData
     reqResult <- req GET (https "api.vk.com" /: "method" /: path e)
         NoReqBody
         jsonResponse
-        (opt <> "access_token" =: _accessToken config
-             <> "v" =: ("5.131" :: Text)
-             <> "count" =: maxCount e)
+        ((opt <> "access_token" =: _accessToken config
+              <> "v" =: ("5.131" :: Text))
+            & maybe Prelude.id ((<>) . ("count" =:)) (maxCount e))
         <&> responseBody
     liftIO (threadDelay (300 * 1000))
     pure case reqResult of
@@ -82,8 +83,8 @@ reqVK e reqData = VKT $ \config -> do
 
 runVKTIO :: MonadIO io => Text -> VKT Req a -> io a
 runVKTIO accessToken = runVKT
-                       >>> ($ VKC accessToken)
-                       >>> runReq defaultHttpConfig
+                   >>> ($ VKC accessToken)
+                   >>> runReq defaultHttpConfig
 
 -- ^ Generic API
 
@@ -138,7 +139,7 @@ instance VKEndoint UsersSearch UsersSearchRequest (VKPage User) where
         ("fields" =: ("universities" :: Text))
             & maybe Prelude.id ((<>) . ("q" =:)) (_q request)
             & maybe Prelude.id ((<>) . ("university" =:) . coerce @UniversityId @Integer) (_university request)
-    maxCount UsersSearch = 1000
+    maxCount UsersSearch = Just 1000
 
 usersSearch :: MonadHttp m => UsersSearchRequest -> VKT m (Either Text [User])
 usersSearch = fmap (fmap items) . reqVK UsersSearch
@@ -159,9 +160,31 @@ data GetSubscriptions = GetSubscriptions
 instance VKEndoint GetSubscriptions GetSubscriptionsRequest GetSubscriptionsResponse where
     path GetSubscriptions = "users.getSubscriptions"
     requestToOption GetSubscriptions (GetSubscriptionsRequest (UserId uid)) = "user_id" =: uid
-    maxCount GetSubscriptions = 200
+    maxCount GetSubscriptions = Just 200
 
 getSubscriptions :: MonadHttp m => GetSubscriptionsRequest -> VKT m (Either Text [GroupId])
 getSubscriptions = fmap (fmap (items . groups)) . reqVK GetSubscriptions
 
 -- ^ users.getSubscriptions
+
+data ExecuteRequest = ExecuteRequest
+    { code :: Text }
+    deriving (Generic)
+
+data Execute = Execute
+instance VKEndoint Execute ExecuteRequest Value where
+    path Execute = "execute"
+    requestToOption Execute (ExecuteRequest c) = "code" =: c
+    maxCount Execute = Nothing
+
+executeCode :: (MonadHttp m, FromJSON response) => Text -> VKT m (Either Text response)
+executeCode c = do
+    -- liftIO $ T.putStrLn c
+    resp <- reqVK Execute (ExecuteRequest c)
+    liftIO $ print resp
+    pure case parseEither parseJSON <$> resp of
+        Right (Right ok) -> Right ok
+        Right (Left err) -> Left (T.pack err)
+        Left err -> Left err
+
+-- ^ execute

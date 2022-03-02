@@ -1,9 +1,14 @@
 module OVD.Types where
 
+import Control.Category ((>>>))
+-- import Data.Function ((&))
 import Data.Functor ((<&>))
+
+import Data.Char (isAlpha, isSpace)
 
 import Data.Text (Text)
 import Data.Text qualified as T
+-- import Data.Text.IO qualified as T
 
 import VK qualified
 
@@ -40,11 +45,20 @@ flattenByCity byCity = do
 perPersonToCsv :: PerPerson Text -> Text
 perPersonToCsv (PerPerson (Person fullName info) uids (City city) loc) =
     T.intercalate "," [ fullName
-                      , T.intercalate
-                            " "
+                      , T.unwords
                             ((\(VK.UserId uid) -> "https://vk.com/id" <> T.pack (show uid)) <$> uids)
                       , info, city, locToCsv loc
                       ]
 
 byCityToCsv :: [ByCity Text] -> [Text]
 byCityToCsv byCity = flattenByCity byCity <&> perPersonToCsv
+
+trimFullName :: Text -> Text
+trimFullName = T.unpack
+             >>> filter (\c -> isAlpha c || isSpace c)
+             >>> T.pack
+             >>> T.strip
+
+trimFullNames :: [PerPerson Text] -> [PerPerson Text]
+trimFullNames = fmap \(PerPerson (Person fullName info) uids (City city) loc) ->
+                      (PerPerson (Person (trimFullName fullName) info) uids (City city) loc)
