@@ -53,8 +53,8 @@ perPersonToCsv (PerPerson (Person fullName info) uids (City city) loc) =
                       , info, city, locToCsv loc
                       ]
 
--- byCityToCsv :: [ByCity Text] -> [Text]
--- byCityToCsv byCity = flattenByCity byCity <&> perPersonToCsv
+byCityToCsv :: [ByCity Text] -> [Text]
+byCityToCsv byCity = perPersonToCsv <$> flattenByCity byCity
 
 trimFullName :: Text -> Text
 trimFullName = T.unpack

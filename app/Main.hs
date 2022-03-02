@@ -22,11 +22,12 @@ import Data.Text.Lazy.IO qualified as T.Lazy
 import Data.Set (Set)
 import Data.Set qualified as Set
 
+import Text.HTML.Scalpel
+
+import Control.Monad.Memo
 import Control.Concurrent.Async.Pool
 
 import System.Console.AsciiProgress
-
-import Control.Monad.Memo
 
 import Consts
 import OVD.Types
@@ -74,32 +75,49 @@ getSubscriptionsScript uids =
                         "API.users.getSubscriptions({\"user_id\":" <> T.pack (show uid) <> "}).groups.items")
                      <$> uids) <> "];"
 
+runExceptTReporting :: Monad io => a -> ExceptT Text io a -> io a
+runExceptTReporting defVal act = runExceptT >>=
+    \case
+        Left err -> liftIO (T.putStrLn ("ERROR: " <> err)) $> defVal
+        Right ok -> pure ok
+
 findVKAccount :: MonadIO io => Text -> io [VKAccMatch]
 findVKAccount fullName = runVKTIO accessToken do
     usrsRes <- usersSearch (UsersSearchRequest (Just fullName) Nothing)
+    -- Пользователи ВК, подходящие по ФИО к fullName
     usrs <- case usrsRes of
-        Right ok -> pure ok
         Left err -> Prelude.error (T.unpack err)
+        Right ok -> pure ok
+    -- Пользователи с университетом = ВШЭ
     let usrsWithUni =
             filter (\u -> hseUniId `elem` (universityId <$> fromMaybe [] (universities u))) usrs
+    -- Пользователи без указанного у.
     let usrsNoUni =
             filter (null . universities) usrs
-    usrsWithGrps <- if null usrsNoUni then pure [] else do
+    usrsWithGrps <- catMaybes <$> if null usrsNoUni then pure [] else do
         pb <- liftIO $ newProgressBar def { pgFormat = "Getting subs :percent [:bar] :current/:total elapsed :elapseds, ETA :etas"
                                           , pgTotal = toInteger (length usrsNoUni)
                                           }
-        concat <$> for (chunksOf 25 (userId <$> usrsNoUni)) \uidChunk -> do
+        -- Блоки id по 25 штук
+        let uidChunks = chunksOf 25 (userId <$> usrsNoUni)
+        -- Пары пользователь-группы (если есть)
+        (pairs :: [(UserId, Set GroupId)]) <- concat <$> for uidChunks \uidChunk -> do
             let script = getSubscriptionsScript uidChunk
-            (execRes :: Either Text [Maybe [GroupId]]) <- executeCode script
-            liftIO $ tickN pb (length uidChunk)
-            catMaybes <$> case (zip uidChunk . fmap Set.fromList . catMaybes) <$> execRes of
-                Right pairs -> pure $ pairs <&> \(uid, subs) ->
-                                        if length (findHseGroupsIn subs) > 0
-                                            then Just (uid, findHseGroupsIn subs)
-                                            else Nothing
+            (execRes :: Either Text [Maybe [GroupId]]) <- executeCode script <* liftIO (tickN pb (length uidChunk))
+            pure case execRes of
                 Left err -> Prelude.error $ T.unpack err
+                Right gids' -> let (gids :: [Set GroupId]) = maybe mempty Set.fromList <$> gids'
+                                in zip uidChunk gids
+        pure $ pairs <&> \(uid, subs) ->
+                           if length (findHseGroupsIn subs) > 0
+                               then Just (uid, findHseGroupsIn subs)
+                               else Nothing
     pure $ fmap (MatchUni . userId) usrsWithUni
             ++ fmap (\(uid, grps) -> GroupsMatch uid grps) usrsWithGrps
+
+-- Takes ФИО and returns ФИ
+dropPatronymic :: Text -> Text
+dropPatronymic = T.unwords . take 2 . T.words
 
 withVK :: [PerPerson Text] -> IO [PerPerson Text]
 withVK people = if null people then pure [] else do
@@ -109,23 +127,29 @@ withVK people = if null people then pure [] else do
     startEvalMemoT $
         for people \(PerPerson (Person fullName' info) _ city loc) ->
             -- Most VK users have only surname and name
-            let fullName = fullName' & T.words & take 2 & T.unwords
+            let fullName = dropPatronymic fullName'
              in (memo findVKAccount fullName <* liftIO (tick pb)) <&>
-                    (\uids -> PerPerson (Person fullName info) uids city loc) . fmap matchId
+                    (\uids -> PerPerson (Person fullName' info) uids city loc) . fmap matchId
 
 main :: IO ()
 main = displayConsoleRegions do
     (oldNames :: [Text]) <- T.readFile "all.csv" <&> T.lines -- <&> Set.fromList
-    rawHtml <- T.readFile "raw.html"
-    flattened <- parseByCity rawHtml
-                <&> flattenByCity
-                <&> trimFullNames
-                <&> filter (\(PerPerson (Person n _) _ _ _) ->
-                        not (any (Set.isSubsetOf (Set.fromList (T.words n)) . Set.fromList . T.words) oldNames))
+    let (oldNamesWords :: [Set Text]) = oldNames <&> T.words <&> Set.fromList
+    parsed <- fromMaybe [] <$>
+        scrapeURL
+            "https://ovd.news/news/2022/03/02/spiski-zaderzhannyh-v-svyazi-s-akciyami-protiv-voyny-s-ukrainoy-2-marta-2022-goda"
+            byCityInBody
+    -- parsed <- T.readFile "raw.html" >>= flip scrapeStringLikeT byCityInBody <&> fromMaybe []
+    let flattened = parsed
+                  & flattenByCity
+                  & trimFullNames
+                  & filter \perPerson ->
+                            let fullNameWords = perPerson & perPersonFullName & T.words & Set.fromList
+                             in not (any (Set.isSubsetOf fullNameWords) oldNamesWords)
     (noRuz, fromRuz) <- withRuz flattened
     final <- fromRuz & withVK
     let freshContent = T.Lazy.unlines $ T.Lazy.fromStrict . perPersonToCsv <$> final
     let allContent = T.Lazy.unlines $ T.Lazy.fromStrict <$>
-            Set.toList (Set.fromList (fmap perPersonFullName final ++ noRuz))
-    T.Lazy.writeFile "fresh.csv" freshContent
+            Set.toList (Set.fromList (fmap (dropPatronymic . perPersonFullName) final ++ noRuz))
     T.Lazy.appendFile "all.csv" allContent
+    T.Lazy.writeFile "fresh.csv" freshContent

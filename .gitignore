@@ -1,5 +1,5 @@
 raw.html
 raw_files/
 .stack-work/
-all.csv
-fresh.csv
+*.csv
+result*

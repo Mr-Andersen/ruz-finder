@@ -38,7 +38,7 @@ executable ruz-finder
                      , TypeApplications
                      , TypeFamilies
                      , UnicodeSyntax
-  build-depends:       base, text, containers, split
+  build-depends:       base, text, containers, mtl, split
                      , req, aeson
                      , scalpel
                      , regex
@@ -46,4 +46,3 @@ executable ruz-finder
                      , ascii-progress
                      , monad-memo
                      -- , generic-deriving
-                     -- , regex-base, regex-pcre
