@@ -1,10 +1,12 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+
 module VK where
 
 import Prelude hiding (id)
 import Prelude qualified
 
 import Control.Category ((>>>))
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class
 import Data.Coerce (coerce)
 import Data.Function ((&))
 import Data.Functor ((<&>))
@@ -39,6 +41,9 @@ instance Monad m => Monad (VKT m) where
                                 f' = flip (runVKT . f) c
                              in x' >>= f'
 
+instance MonadIO m => MonadIO (VKT m) where
+    liftIO = VKT . const . liftIO
+
 data VkResponseError = VkResponseError
     { error_code :: Integer
     , error_msg :: Text }
@@ -70,12 +75,12 @@ reqVK e reqData = VKT $ \config -> do
              <> "v" =: ("5.131" :: Text)
              <> "count" =: maxCount e)
         <&> responseBody
-    liftIO (threadDelay (200 * 1000))
+    liftIO (threadDelay (300 * 1000))
     pure case reqResult of
         VKROk respOk -> Right respOk
         VKRErr (VkResponseError _ msg) -> Left msg
 
-runVKTIO :: Text -> VKT Req a -> IO a
+runVKTIO :: MonadIO io => Text -> VKT Req a -> io a
 runVKTIO accessToken = runVKT
                        >>> ($ VKC accessToken)
                        >>> runReq defaultHttpConfig
@@ -105,11 +110,24 @@ data UsersSearchRequest = UsersSearchRequest
     -- , fields :: Maybe [Text]
     , _university :: Maybe UniversityId }
 
+data University = University
+    { id :: UniversityId }
+    deriving (Generic, Show)
+
+universityId :: University -> UniversityId
+universityId (University uid) = uid
+
+instance FromJSON University
+
 data User = User
     { id :: UserId
     , first_name :: Text
-    , last_name :: Text }
+    , last_name :: Text
+    , universities :: Maybe [University] }
     deriving (Generic, Show)
+
+userId :: User -> UserId
+userId (User uid _ _ _) = uid
 
 instance FromJSON User
 
@@ -117,8 +135,9 @@ data UsersSearch = UsersSearch
 instance VKEndoint UsersSearch UsersSearchRequest (VKPage User) where
     path UsersSearch = "users.search"
     requestToOption UsersSearch request =
-        mempty & maybe Prelude.id ((<>) . ("q" =:)) (_q request)
-               & maybe Prelude.id ((<>) . ("university" =:) . coerce @UniversityId @Integer) (_university request)
+        ("fields" =: ("universities" :: Text))
+            & maybe Prelude.id ((<>) . ("q" =:)) (_q request)
+            & maybe Prelude.id ((<>) . ("university" =:) . coerce @UniversityId @Integer) (_university request)
     maxCount UsersSearch = 1000
 
 usersSearch :: MonadHttp m => UsersSearchRequest -> VKT m (Either Text [User])

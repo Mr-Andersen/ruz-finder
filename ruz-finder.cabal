@@ -44,5 +44,6 @@ executable ruz-finder
                      , regex
                      , async-pool
                      , ascii-progress
+                     , monad-memo
                      -- , generic-deriving
                      -- , regex-base, regex-pcre
