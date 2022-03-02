@@ -18,7 +18,7 @@ parserByCity = many do
         locRaw <- seekNext (text "h3")
         let loc = if "неизвестно" `T.isInfixOf` locRaw then LocationUnknown else Location locRaw
         peopleRaw <- seekNext (text "p")
-        let pattern = [re|[А-ЯЁ][а-яё]+(-| )[А-ЯЁ][а-яё]+|]
+        let pattern = [re|[А-ЯЁ][а-яё\-]+ [А-ЯЁ][а-яё\-]+|]
         let fullNames = P.matches (peopleRaw *=~ pattern)
         let people = flip Person "" <$> fullNames
         pure (ByLoc loc people)
