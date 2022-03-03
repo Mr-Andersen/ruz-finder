@@ -19,7 +19,8 @@ executable ruz-finder
   hs-source-dirs:      app
   ghc-options:         -O2 -Wall -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
-  default-extensions:  BlockArguments
+  default-extensions:  BangPatterns
+                     , BlockArguments
                      , DataKinds
                      , DeriveGeneric
                      , DeriveFunctor
@@ -30,6 +31,7 @@ executable ruz-finder
                      , ImportQualifiedPost
                      , OverloadedStrings
                      , KindSignatures
+                     , LambdaCase
                      , MultiParamTypeClasses
                      , QuasiQuotes
                      , Rank2Types

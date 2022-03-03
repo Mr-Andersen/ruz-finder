@@ -1,10 +1,8 @@
-{-# LANGUAGE Strict #-}
-
 module OVD.HTML where
 
 import Control.Applicative
-import Control.Monad.IO.Class
-import Data.Char (isSpace)
+-- import Control.Monad.IO.Class
+-- import Data.Char (isSpace)
 import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe)
 
@@ -19,7 +17,7 @@ import Text.RE.TDFA.Text qualified as P
 
 import OVD.Types
 
-import Debug.Trace
+-- import Debug.Trace
 
 parserByCity :: Monad m => SerialScraperT Text m [ByCity Text]
 parserByCity = many do

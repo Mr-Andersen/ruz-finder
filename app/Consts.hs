@@ -56,8 +56,6 @@ hseGroups =
         , ("hsepubliclawclub", 201485148)
         ]
 
-accessToken :: Text
-accessToken = "bcea24a641ab3935996574bfd873a09e722c0aca4131362dec5403ae3eec233389b5b5258cb399bc50e7b"
 
 hseUniId :: UniversityId
 hseUniId = UniversityId 128
