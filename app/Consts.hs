@@ -56,6 +56,5 @@ hseGroups =
         , ("hsepubliclawclub", 201485148)
         ]
 
-
 hseUniId :: UniversityId
 hseUniId = UniversityId 128

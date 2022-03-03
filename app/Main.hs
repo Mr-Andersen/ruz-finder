@@ -180,7 +180,11 @@ fromOVD ovdUrl = do
 findInVKMany :: [Text] -> IO [(Text, [VKAccMatch])]
 findInVKMany people = displayConsoleRegions do
     !accessToken <- getAccessToken
-    for people (\person -> (person,) <$> findVKAccount accessToken person)
+    pb <- newProgressBar def { pgFormat = "Finding accs :percent [:bar] :current/:total elapsed :elapseds, ETA :etas"
+                             , pgTotal = toInteger (length people)
+                             }
+    for people \person ->
+        (person,) <$> findVKAccount accessToken person <* tick pb
 
 personMatchToCsv :: (Text, [VKAccMatch]) -> Text
 personMatchToCsv (person, mchs) = person <> "," <> T.intercalate "," (vkAccMatchToCsv <$> mchs)
