@@ -146,7 +146,7 @@ withVK accessToken people = if null people then pure [] else do
 noTokenInstruction :: String
 noTokenInstruction =
     "Нет токена ВК. Перейдите по ссылке "
-        ++ "https://oauth.vk.com/authorize?client_id=8091308&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=friends&response_type=token&v=5.131 "
+        ++ "https://oauth.vk.com/authorize?client_id=8091308&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=friends,groups,offline&response_type=token&v=5.131 "
         ++ "Из адресной строки скопируйте access_token, затем export VK_TOKEN=$access_token"
 
 getAccessToken :: IO Text
