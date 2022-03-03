@@ -145,7 +145,8 @@ withVK accessToken people = if null people then pure [] else do
 
 noTokenInstruction :: String
 noTokenInstruction =
-    "Нет токена ВК. Перейдите по ссылке https://oauth.vk.com/authorize?client_id=8091308&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=friends&response_type=token&v=5.131 "
+    "Нет токена ВК. Перейдите по ссылке "
+        ++ "https://oauth.vk.com/authorize?client_id=8091308&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=friends&response_type=token&v=5.131 "
         ++ "Из адресной строки скопируйте access_token, затем export VK_TOKEN=$access_token"
 
 getAccessToken :: IO Text
@@ -176,18 +177,13 @@ fromOVD ovdUrl = do
     T.Lazy.appendFile allCsv allContent
     T.Lazy.writeFile freshCsv freshContent
 
-findInVKFromStdin :: IO [(Text, [VKAccMatch])]
-findInVKFromStdin = do
-    lns <- getContents <&> lines <&> fmap T.pack
-    for lns (\person -> (person,) <$> findInVK person)
+findInVKMany :: [Text] -> IO [(Text, [VKAccMatch])]
+findInVKMany people = displayConsoleRegions do
+    !accessToken <- getAccessToken
+    for people (\person -> (person,) <$> findVKAccount accessToken person)
 
 personMatchToCsv :: (Text, [VKAccMatch]) -> Text
 personMatchToCsv (person, mchs) = person <> "," <> T.intercalate "," (vkAccMatchToCsv <$> mchs)
-
-findInVK :: Text -> IO [VKAccMatch]
-findInVK fullName = do
-    !accessToken <- getAccessToken
-    displayConsoleRegions $ findVKAccount accessToken fullName
 
 usage :: String
 usage = unlines [ "Usage: ruz-finder COMMAND"
@@ -202,7 +198,14 @@ main = getArgs >>=
         ["ovd", ovdUrl] -> fromOVD ovdUrl
         ["find_in_vk"] -> Prelude.error "missing FULL_NAME"
         ["find_in_vk", "-"] -> Prelude.error "missing OUT_FILE"
-        ["find_in_vk", "-", outFile] ->
-            findInVKFromStdin >>= T.writeFile outFile . T.unlines . fmap personMatchToCsv
-        ["find_in_vk", fullName] -> findInVK (T.pack fullName) >>= traverse_ (T.putStrLn . vkAccMatchToCsv)
-        command : _ -> Prelude.error $ "command " <> command <> " unknown"
+        ["find_in_vk", inFile, outFile] -> do
+            lns <- T.lines <$> case inFile of
+                "-" -> T.getContents
+                inFile' -> T.readFile inFile'
+            matchesCsv <- findInVKMany lns <&> fmap personMatchToCsv
+            let outContent = T.unlines matchesCsv
+            case outFile of
+                "-" -> T.putStrLn outContent
+                outFile' -> T.writeFile outFile' outContent
+        ["find_in_vk", fullName] -> findInVKMany [T.pack fullName] >>= traverse_ (T.putStrLn . personMatchToCsv)
+        command : opts -> Prelude.error $ "command " ++ command ++ " unknown (options: " ++ unwords opts ++ ")"
