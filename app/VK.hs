@@ -1,4 +1,4 @@
-{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE DuplicateRecordFields, ConstraintKinds #-}
 
 module VK where
 
@@ -11,6 +11,8 @@ import Data.Coerce (coerce)
 import Data.Function ((&))
 import Data.Functor ((<&>))
 -- import Data.Proxy
+
+import Control.Monad.Reader
 
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -29,21 +31,9 @@ import Network.HTTP.Req
 data VKConfig = VKC
     { _accessToken :: Text }
 
-newtype VKT m a = VKT
-    { runVKT :: VKConfig -> m a }
-    deriving (Functor)
+type VKT m = ReaderT VKConfig m
 
-instance Applicative m => Applicative (VKT m) where
-    pure = VKT . const . pure
-    VKT f <*> VKT x = VKT \c -> f c <*> x c
-
-instance Monad m => Monad (VKT m) where
-    VKT x >>= f = VKT \c -> let x' = x c
-                                f' = flip (runVKT . f) c
-                             in x' >>= f'
-
-instance MonadIO m => MonadIO (VKT m) where
-    liftIO = VKT . const . liftIO
+type HasVK m = (MonadReader VKConfig m, MonadHttp m)
 
 data VkResponseError = VkResponseError
     { error_code :: Integer
@@ -66,8 +56,9 @@ class FromJSON response => VKEndoint endpoint request response | endpoint -> req
     maxCount :: endpoint -> Maybe Integer
 
 -- reqVK :: FromJSON (w a) => Text -> Option 'Https -> VKT m (w a)
-reqVK :: (MonadHttp m, VKEndoint endpoint request response) => endpoint -> request -> VKT m (Either Text response)
-reqVK e reqData = VKT $ \config -> do
+reqVK :: (HasVK m, VKEndoint endpoint request response) => endpoint -> request -> m (Either Text response)
+reqVK e reqData = do
+    config <- ask
     let opt = requestToOption e reqData
     reqResult <- req GET (https "api.vk.com" /: "method" /: path e)
         NoReqBody
@@ -82,8 +73,7 @@ reqVK e reqData = VKT $ \config -> do
         VKRErr (VkResponseError _ msg) -> Left msg
 
 runVKTIO :: MonadIO io => Text -> VKT Req a -> io a
-runVKTIO accessToken = runVKT
-                   >>> ($ VKC accessToken)
+runVKTIO accessToken = flip runReaderT (VKC accessToken)
                    >>> runReq defaultHttpConfig
 
 -- ^ Generic API
@@ -141,7 +131,7 @@ instance VKEndoint UsersSearch UsersSearchRequest (VKPage User) where
             & maybe Prelude.id ((<>) . ("university" =:) . coerce @UniversityId @Integer) (_university request)
     maxCount UsersSearch = Just 1000
 
-usersSearch :: MonadHttp m => UsersSearchRequest -> VKT m (Either Text [User])
+usersSearch :: HasVK m => UsersSearchRequest -> m (Either Text [User])
 usersSearch = fmap (fmap items) . reqVK UsersSearch
 
 -- ^ users.search
@@ -162,7 +152,7 @@ instance VKEndoint GetSubscriptions GetSubscriptionsRequest GetSubscriptionsResp
     requestToOption GetSubscriptions (GetSubscriptionsRequest (UserId uid)) = "user_id" =: uid
     maxCount GetSubscriptions = Just 200
 
-getSubscriptions :: MonadHttp m => GetSubscriptionsRequest -> VKT m (Either Text [GroupId])
+getSubscriptions :: HasVK m => GetSubscriptionsRequest -> m (Either Text [GroupId])
 getSubscriptions = fmap (fmap (items . groups)) . reqVK GetSubscriptions
 
 -- ^ users.getSubscriptions
@@ -177,7 +167,7 @@ instance VKEndoint Execute ExecuteRequest Value where
     requestToOption Execute (ExecuteRequest c) = "code" =: c
     maxCount Execute = Nothing
 
-executeCode :: (MonadHttp m, FromJSON response) => Text -> VKT m (Either Text response)
+executeCode :: (HasVK m, FromJSON response) => Text -> m (Either Text response)
 executeCode c = do
     -- liftIO $ T.putStrLn c
     resp <- reqVK Execute (ExecuteRequest c)
