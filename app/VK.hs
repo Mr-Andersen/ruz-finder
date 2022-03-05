@@ -1,82 +1,45 @@
-{-# LANGUAGE DuplicateRecordFields, ConstraintKinds #-}
-
-module VK where
+module VK ( VK
+          , VKEndoint(..)
+          , reqVK
+          -- ^ VK.Core
+          , VKPage(..)
+          , UserId(..)
+          , GroupId(..)
+          , UniversityId(..)
+          , UsersSearchRequest(..)
+          , University(University)
+          , universityId
+          , User(..)
+          , userId
+          , UsersSearch(..)
+          , usersSearch
+          , GetSubscriptionsRequest(..)
+          , GetSubscriptionsResponse(..)
+          , GetSubscriptions(..)
+          , getSubscriptions
+          , ExecuteRequest(..)
+          , Execute(..)
+          , executeCode ) where
 
 import Prelude hiding (id)
 import Prelude qualified
 
 import Control.Category ((>>>))
-import Control.Monad.IO.Class
-import Data.Coerce (coerce)
 import Data.Function ((&))
-import Data.Functor ((<&>))
--- import Data.Proxy
-
-import Control.Monad.Reader
 
 import Data.Text (Text)
 import Data.Text qualified as T
--- import Data.Text.IO qualified as T
 
-import GHC.Generics (Generic)
+import Polysemy
+import Polysemy.Error (Error, throw)
+import Polysemy.Http (QueryValue(..))
+
 import Data.Aeson
 import Data.Aeson.Types (parseEither)
 
-import Control.Concurrent (threadDelay)
-import Network.HTTP.Req
+import GHC.Generics (Generic)
 
--- import Debug.Trace
--- import Generics.Deriving.Show
-
-data VKConfig = VKC
-    { _accessToken :: Text }
-
-type VKT m = ReaderT VKConfig m
-
-type HasVK m = (MonadReader VKConfig m, MonadHttp m)
-
-data VkResponseError = VkResponseError
-    { error_code :: Integer
-    , error_msg :: Text }
-    deriving (Generic)
-
-instance FromJSON VkResponseError
-
-data VKResponse a = VKROk { response :: a }
-                  | VKRErr { error :: VkResponseError }
-    deriving (Generic)
-
-instance FromJSON a => FromJSON (VKResponse a) where
-    parseJSON = genericParseJSON defaultOptions { sumEncoding = UntaggedValue }
-
-class FromJSON response => VKEndoint endpoint request response | endpoint -> request
-                                                               , endpoint -> response where
-    path :: endpoint -> Text
-    requestToOption :: endpoint -> request -> Option 'Https
-    maxCount :: endpoint -> Maybe Integer
-
--- reqVK :: FromJSON (w a) => Text -> Option 'Https -> VKT m (w a)
-reqVK :: (HasVK m, VKEndoint endpoint request response) => endpoint -> request -> m (Either Text response)
-reqVK e reqData = do
-    config <- ask
-    let opt = requestToOption e reqData
-    reqResult <- req GET (https "api.vk.com" /: "method" /: path e)
-        NoReqBody
-        jsonResponse
-        ((opt <> "access_token" =: _accessToken config
-              <> "v" =: ("5.131" :: Text))
-            & maybe Prelude.id ((<>) . ("count" =:)) (maxCount e))
-        <&> responseBody
-    liftIO (threadDelay (300 * 1000))
-    pure case reqResult of
-        VKROk respOk -> Right respOk
-        VKRErr (VkResponseError _ msg) -> Left msg
-
-runVKTIO :: MonadIO io => Text -> VKT Req a -> io a
-runVKTIO accessToken = flip runReaderT (VKC accessToken)
-                   >>> runReq defaultHttpConfig
-
--- ^ Generic API
+import VK.Core
 
 data VKPage a = VKPage
     { count :: Integer
@@ -126,13 +89,18 @@ data UsersSearch = UsersSearch
 instance VKEndoint UsersSearch UsersSearchRequest (VKPage User) where
     path UsersSearch = "users.search"
     requestToOption UsersSearch request =
-        ("fields" =: ("universities" :: Text))
-            & maybe Prelude.id ((<>) . ("q" =:)) (_q request)
-            & maybe Prelude.id ((<>) . ("university" =:) . coerce @UniversityId @Integer) (_university request)
+        [("fields", Just "universities")]
+            & (_q request
+                & maybe Prelude.id (QueryValue >>> Just >>> ("q",) >>> (:)))
+            & (_university request
+                & maybe Prelude.id (
+                    show >>> T.pack
+                    >>> QueryValue >>> Just
+                    >>> ("university",) >>> (:)))
     maxCount UsersSearch = Just 1000
 
-usersSearch :: HasVK m => UsersSearchRequest -> m (Either Text [User])
-usersSearch = fmap (fmap items) . reqVK UsersSearch
+usersSearch :: VK `Member` r => UsersSearchRequest -> Sem r [User]
+usersSearch = fmap items . reqVK UsersSearch
 
 -- ^ users.search
 
@@ -149,11 +117,12 @@ instance FromJSON GetSubscriptionsResponse
 data GetSubscriptions = GetSubscriptions
 instance VKEndoint GetSubscriptions GetSubscriptionsRequest GetSubscriptionsResponse where
     path GetSubscriptions = "users.getSubscriptions"
-    requestToOption GetSubscriptions (GetSubscriptionsRequest (UserId uid)) = "user_id" =: uid
+    requestToOption GetSubscriptions (GetSubscriptionsRequest (UserId uid)) =
+        [("user_id", uid & show & T.pack& QueryValue & Just )]
     maxCount GetSubscriptions = Just 200
 
-getSubscriptions :: HasVK m => GetSubscriptionsRequest -> m (Either Text [GroupId])
-getSubscriptions = fmap (fmap (items . groups)) . reqVK GetSubscriptions
+getSubscriptions :: VK `Member` r => GetSubscriptionsRequest -> Sem r [GroupId]
+getSubscriptions = fmap (items . groups) . reqVK GetSubscriptions
 
 -- ^ users.getSubscriptions
 
@@ -164,17 +133,17 @@ data ExecuteRequest = ExecuteRequest
 data Execute = Execute
 instance VKEndoint Execute ExecuteRequest Value where
     path Execute = "execute"
-    requestToOption Execute (ExecuteRequest c) = "code" =: c
+    requestToOption Execute (ExecuteRequest c) =
+        [("code", c & QueryValue & Just)]
     maxCount Execute = Nothing
 
-executeCode :: (HasVK m, FromJSON response) => Text -> m (Either Text response)
+executeCode :: ('[ VK, Error Text ] `Members` r, FromJSON response) => Text -> Sem r response
 executeCode c = do
     -- liftIO $ T.putStrLn c
     resp <- reqVK Execute (ExecuteRequest c)
     -- liftIO $ print resp
-    pure case parseEither parseJSON <$> resp of
-        Right (Right ok) -> Right ok
-        Right (Left err) -> Left (T.pack err)
-        Left err -> Left err
+    case parseEither parseJSON resp of
+        Right ok -> pure ok
+        Left err -> throw (T.pack err)
 
 -- ^ execute

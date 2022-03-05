@@ -15,15 +15,22 @@ cabal-version:       >=1.10
 
 executable ruz-finder
   main-is:             Main.hs
-  other-modules:       OVD.Types OVD.HTML QueryPerson Ruz VK Consts
+  other-modules:       OVD.Types OVD.HTML
+                     , Polysemy.Cache
+                     , QueryPerson
+                     , Ruz
+                     , VK.Core VK.Interpreter VK
+                     , Consts Utils
   hs-source-dirs:      app
   ghc-options:         -O2 -Wall -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
   default-extensions:  BangPatterns
                      , BlockArguments
+                     , ConstraintKinds
                      , DataKinds
                      , DeriveGeneric
                      , DeriveFunctor
+                     , DuplicateRecordFields
                      , ExistentialQuantification
                      , FlexibleInstances
                      , FlexibleContexts
@@ -33,18 +40,27 @@ executable ruz-finder
                      , KindSignatures
                      , LambdaCase
                      , MultiParamTypeClasses
+                     , NamedFieldPuns
                      , QuasiQuotes
                      , Rank2Types
                      , ScopedTypeVariables
                      , TupleSections
                      , TypeApplications
                      , TypeFamilies
+                     , TypeOperators
                      , UnicodeSyntax
-  build-depends:       base, text, containers, mtl, split
-                     , req, aeson
-                     , scalpel
-                     , regex
-                     , async-pool
+  build-depends:       aeson
                      , ascii-progress
-                     , monad-memo
-                     -- , generic-deriving
+                     , async-pool
+                     , base
+                     , containers
+                     , http-client
+                     , lens
+                     , polysemy
+                     , polysemy-conc
+                     , polysemy-http
+                     , polysemy-log
+                     , regex
+                     , scalpel
+                     , split
+                     , text

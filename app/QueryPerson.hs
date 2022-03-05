@@ -1,7 +1,11 @@
 module QueryPerson where
 
-import Control.Monad.IO.Class (MonadIO)
 import Data.Text (Text)
+
+import Polysemy (Sem, Members)
+import Polysemy.Error (Error)
+import Polysemy.Http (Http)
+import Network.HTTP.Client (BodyReader)
 
 import GHC.Generics (Generic)
 import Data.Aeson (FromJSON)
@@ -14,4 +18,4 @@ data QueryResult = QueryResult
 instance FromJSON QueryResult
 
 class QueryPerson s where
-    query :: MonadIO io => s -> [Text] -> io [QueryResult]
+    queryPerson :: '[ Http BodyReader, Error Text ] `Members` r => s -> [Text] -> Sem r [QueryResult]

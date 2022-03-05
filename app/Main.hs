@@ -2,12 +2,12 @@ module Main where
 
 import Prelude
 
-import Control.Monad.IO.Class
 import Data.Either (partitionEithers)
 import Data.Foldable (traverse_)
 import Data.Traversable (for)
 import Data.Function ((&))
 import Data.Functor
+import Data.Functor.Identity
 import Data.List (permutations)
 import Data.List.Split (chunksOf)
 import Data.Maybe (catMaybes, fromMaybe)
@@ -19,20 +19,20 @@ import Data.Text.IO qualified as T
 import Data.Text.Lazy qualified as T.Lazy
 import Data.Text.Lazy.IO qualified as T.Lazy
 
-import System.Environment
+import Polysemy
+import Polysemy.Error -- (Error, runError, throw)
+import Polysemy.Cache
 
-import Control.Monad.Except
+import System.Environment
 
 import Data.Set (Set)
 import Data.Set qualified as Set
 
 import Text.HTML.Scalpel
 
-import Control.Monad.Memo
-import Control.Concurrent.Async.Pool
-
 import System.Console.AsciiProgress
-import Network.HTTP.Req (Req)
+
+import Control.Concurrent.Async.Pool qualified as A
 
 import Consts
 import OVD.Types
@@ -40,6 +40,8 @@ import OVD.HTML
 import QueryPerson
 import Ruz
 import VK hiding (id)
+import VK.Interpreter
+import Utils
 
 permutFullNames :: [PerPerson Text] -> [PerPerson [Text]]
 permutFullNames perPerson =
@@ -47,21 +49,32 @@ permutFullNames perPerson =
         <&> \(PerPerson (Person fullName i) uids city loc) -> permutations (T.words fullName)
             <&> \fullNameWords -> PerPerson (Person fullNameWords i) uids city loc
 
+withTaskGroup' :: Int -> (A.TaskGroup -> Sem '[ Embed IO ] a)
+               -> Sem '[ Embed IO ] a
+withTaskGroup' n h = withTaskGroup (fmap Identity) (pure . runIdentity) n h
+
+mapConcurrently' :: Traversable t
+                 => A.TaskGroup -> (a -> Sem '[ Embed IO ] b) -> t a
+                 -> Sem '[ Embed IO ] (t b)
+mapConcurrently' = mapConcurrently (fmap Identity) (pure . runIdentity)
+
 -- Returns (names not found in Ruz, names with info from Ruz)
-withRuz :: MonadIO io => [PerPerson Text] -> io ([Text], [PerPerson Text])
-withRuz perPerson = if null perPerson then pure ([], []) else liftIO do
+withRuz :: Embed IO `Member` r
+        => [PerPerson Text]
+        -> Sem r ([Text], [PerPerson Text])
+withRuz perPerson = embed $ if null perPerson then pure ([], []) else do
     pb <- newProgressBar def { pgFormat = "Quering RUZ :percent [:bar] :current/:total elapsed :elapseds, ETA :etas"
                              , pgTotal = toInteger (length perPerson)
                              }
-    fmap concat . partitionEithers @Text @[PerPerson Text]
-        <$> withTaskGroup 4 \g -> flip (mapConcurrently g) (permutFullNames perPerson)
-            \(PerPerson (Person fullNameWords _) uids city loc) -> do
-                ruzResults <- query Ruz fullNameWords <* tick pb
-                pure $ if null ruzResults then
-                            Left (T.unwords fullNameWords)
-                        else Right $ ruzResults
-                                        <&> \(QueryResult lbl descr) ->
-                                              PerPerson (Person lbl descr) uids city loc
+    runM $ fmap concat . partitionEithers @Text @[PerPerson Text]
+        <$> withTaskGroup' 4 \g -> flip (mapConcurrently' g) (permutFullNames perPerson)
+            \(PerPerson (Person fullNameWords _) uids city loc) -> interpretHttpIO $ runError do
+                ruzResults <- queryPerson Ruz fullNameWords <* embed (tick pb)
+                if null ruzResults then
+                    throw (T.unwords fullNameWords)
+                else pure $ ruzResults
+                                <&> \(QueryResult lbl descr) ->
+                                      PerPerson (Person lbl descr) uids city loc
 
 findHseGroupsIn :: Set GroupId -> [(Text, GroupId)]
 findHseGroupsIn grps = filter (\(_, gid) -> gid `Set.member` grps) hseGroups
@@ -87,19 +100,12 @@ getSubscriptionsScript uids =
                         "API.users.getSubscriptions({\"user_id\":" <> T.pack (show uid) <> "}).groups.items")
                      <$> uids) <> "];"
 
-runExceptTReporting :: MonadIO io => a -> ExceptT Text io a -> io a
-runExceptTReporting defVal act = runExceptT act >>=
-    \case
-        Left err -> liftIO (T.putStrLn ("ERROR: " <> err)) $> defVal
-        Right ok -> pure ok
-
-findVKAccount :: MonadIO io => Text -> Text -> io [VKAccMatch]
-findVKAccount accessToken fullName = runVKTIO accessToken $ runExceptTReporting @(VKT Req) [] do
-    usrsRes <- usersSearch (UsersSearchRequest (Just fullName) Nothing) :: ExceptT Text (VKT Req) (Either Text [User])
+findVKAccount :: '[ Embed IO, VK, Error Text ] `Members` r
+              => Text
+              -> Sem r [VKAccMatch]
+findVKAccount fullName = do
     -- Пользователи ВК, подходящие по ФИО к fullName
-    usrs <- case usrsRes of
-        Left err -> throwError err
-        Right ok -> pure ok
+    usrs <- usersSearch (UsersSearchRequest (Just fullName) Nothing)
     -- Пользователи с университетом = ВШЭ
     let usrsWithUni =
             filter (\u -> hseUniId `elem` (universityId <$> fromMaybe [] (universities u))) usrs
@@ -107,19 +113,17 @@ findVKAccount accessToken fullName = runVKTIO accessToken $ runExceptTReporting 
     let usrsNoUni =
             filter (null . universities) usrs
     usrsWithGrps <- catMaybes <$> if null usrsNoUni then pure [] else do
-        pb <- liftIO $ newProgressBar def { pgFormat = "Getting subs :percent [:bar] :current/:total elapsed :elapseds, ETA :etas"
-                                          , pgTotal = toInteger (length usrsNoUni)
-                                          }
+        pb <- embed $ newProgressBar def { pgFormat = "Getting subs :percent [:bar] :current/:total elapsed :elapseds, ETA :etas"
+                                         , pgTotal = toInteger (length usrsNoUni)
+                                         }
         -- Блоки id по 25 штук
         let uidChunks = chunksOf 25 (userId <$> usrsNoUni)
         -- Пары пользователь-группы (если есть)
         (pairs :: [(UserId, Set GroupId)]) <- concat <$> for uidChunks \uidChunk -> do
             let script = getSubscriptionsScript uidChunk
-            (execRes :: Either Text [Maybe [GroupId]]) <- executeCode script <* liftIO (tickN pb (length uidChunk))
-            case execRes of
-                Left err -> throwError err
-                Right gids' -> let (gids :: [Set GroupId]) = maybe mempty Set.fromList <$> gids'
-                                in pure (zip uidChunk gids)
+            (gids' :: [Maybe [GroupId]]) <- executeCode script <* embed (tickN pb (length uidChunk))
+            let (gids :: [Set GroupId]) = maybe mempty Set.fromList <$> gids'
+            pure (zip uidChunk gids)
         pure $ pairs <&> \(uid, subs) ->
                            if length (findHseGroupsIn subs) > 0
                                then Just (uid, findHseGroupsIn subs)
@@ -131,37 +135,46 @@ findVKAccount accessToken fullName = runVKTIO accessToken $ runExceptTReporting 
 dropPatronymic :: Text -> Text
 dropPatronymic = T.unwords . take 2 . T.words
 
-withVK :: Text -> [PerPerson Text] -> IO [PerPerson Text]
-withVK accessToken people = if null people then pure [] else do
-    pb <- newProgressBar def { pgFormat = "Finding accs :percent [:bar] :current/:total elapsed :elapseds, ETA :etas"
-                             , pgTotal = toInteger (length people)
-                             }
-    startEvalMemoT $
-        for people \(PerPerson (Person fullName' info) _ city loc) ->
-            -- Most VK users have only surname and name
-            let fullName = dropPatronymic fullName'
-             in (memo (findVKAccount accessToken) fullName <* liftIO (tick pb)) <&>
-                    (\uids -> PerPerson (Person fullName' info) uids city loc) . fmap matchId
+withVK :: '[ Embed IO, VK, Error Text ] `Members` r
+       => [PerPerson Text] -> Sem r [PerPerson Text]
+withVK perPersons = do
+    let people = dropPatronymic . perPersonFullName <$> perPersons
+    mchs' <- findInVKMany people
+    pure $ zip perPersons mchs'
+            <&> \(PerPerson (Person fullName info) _ city loc, mchs) ->
+                  PerPerson (Person fullName info) (matchId <$> mchs) city loc
+        -- <&> fmap ((\uids -> PerPerson (Person fullName' info) uids city loc) . fmap matchId)
+-- withVK accessToken people = if null people then pure (Right []) else do
+--     pb <- newProgressBar def { pgFormat = "Finding accs :percent [:bar] :current/:total elapsed :elapseds, ETA :etas"
+--                              , pgTotal = toInteger (length people)
+--                              }
+--     startEvalMemoT $
+--         for people \(PerPerson (Person fullName' info) _ city loc) ->
+--             -- Most VK users have only surname and name
+--             let fullName = dropPatronymic fullName'
+--              in (memo (findVKAccount accessToken) fullName <* liftIO (tick pb)) <&>
+--                     fmap ((\uids -> PerPerson (Person fullName' info) uids city loc) . fmap matchId)
 
-noTokenInstruction :: String
+noTokenInstruction :: Text
 noTokenInstruction =
     "Нет токена ВК. Перейдите по ссылке "
-        ++ "https://oauth.vk.com/authorize?client_id=8091308&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=friends,groups,offline&response_type=token&v=5.131 "
-        ++ "Из адресной строки скопируйте access_token, затем export VK_TOKEN=$access_token"
+        <> "https://oauth.vk.com/authorize?client_id=8091308&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=friends,groups,offline&response_type=token&v=5.131 "
+        <> "Из адресной строки скопируйте access_token, затем export VK_TOKEN=$access_token"
 
-getAccessToken :: IO Text
-getAccessToken = lookupEnv "VK_TOKEN" <&> maybe (Prelude.error noTokenInstruction) T.pack
+getAccessToken :: '[ Embed IO, Error Text ] `Members` r => Sem r Text
+getAccessToken = embed (lookupEnv "VK_TOKEN") >>= maybe (throw noTokenInstruction) (pure . T.pack)
 
-fromOVD :: String -> IO ()
+fromOVD :: '[ Embed IO, VK, Error Text ] `Members` r
+        => String -> Sem r ()
 fromOVD ovdUrl = do
-    dataDir <- lookupEnv "DATA_DIR" <&> maybe Prelude.id (<>)
-    !accessToken <- getAccessToken
+    dataDir <- embed $ lookupEnv "DATA_DIR" <&> maybe Prelude.id (<>)
+    -- !accessToken <- getAccessToken
     let allCsv = dataDir "all.csv"
     let freshCsv = dataDir "fresh.csv"
 
-    (oldNames :: [Text]) <- T.readFile allCsv <&> T.lines -- <&> Set.fromList
+    (oldNames :: [Text]) <- embed $ T.readFile allCsv <&> T.lines -- <&> Set.fromList
     let (oldNamesWords :: [Set Text]) = oldNames <&> T.words <&> Set.fromList
-    parsed <- fromMaybe [] <$> scrapeURL ovdUrl byCityInBody
+    parsed <- embed $ fromMaybe [] <$> scrapeURL ovdUrl byCityInBody
     -- parsed <- T.readFile "raw.html" >>= flip scrapeStringLikeT byCityInBody <&> fromMaybe []
     let flattened = parsed
                   & flattenByCity
@@ -169,47 +182,61 @@ fromOVD ovdUrl = do
                   & filter \perPerson ->
                             let fullNameWords = perPerson & perPersonFullName & T.words & Set.fromList
                              in not (any (Set.isSubsetOf fullNameWords) oldNamesWords)
-    (noRuz, fromRuz) <- displayConsoleRegions $ withRuz flattened
-    final <- displayConsoleRegions $ withVK accessToken fromRuz
+    (noRuz, fromRuz) <- withRuz flattened
+    final <- withVK fromRuz
     let freshContent = T.Lazy.unlines $ T.Lazy.fromStrict . perPersonToCsv <$> final
     let allContent = T.Lazy.unlines $ T.Lazy.fromStrict <$>
             Set.toList (Set.fromList (fmap (dropPatronymic . perPersonFullName) final ++ noRuz))
-    T.Lazy.appendFile allCsv allContent
-    T.Lazy.writeFile freshCsv freshContent
+    embed $ T.Lazy.appendFile allCsv allContent
+    embed $ T.Lazy.writeFile freshCsv freshContent
 
-findInVKMany :: [Text] -> IO [(Text, [VKAccMatch])]
-findInVKMany people = displayConsoleRegions do
-    !accessToken <- getAccessToken
-    pb <- newProgressBar def { pgFormat = "Finding accs :percent [:bar] :current/:total elapsed :elapseds, ETA :etas"
-                             , pgTotal = toInteger (length people)
-                             }
-    for people \person ->
-        (person,) <$> findVKAccount accessToken person <* tick pb
+findInVKMany :: '[ Embed IO, VK, Error Text ] `Members` r
+             => [Text] -> Sem r [[VKAccMatch]]
+findInVKMany people = do
+    pb <- embed $ newProgressBar def { pgFormat = "Finding accs :percent [:bar] :current/:total elapsed :elapseds, ETA :etas"
+                                     , pgTotal = toInteger (length people)
+                                     }
+    runCache' @Text @[VKAccMatch] $ for people \person ->
+        memo findVKAccount person <* embed (tick pb)
 
 personMatchToCsv :: (Text, [VKAccMatch]) -> Text
 personMatchToCsv (person, mchs) = person <> "," <> T.intercalate "," (vkAccMatchToCsv <$> mchs)
 
-usage :: String
-usage = unlines [ "Usage: ruz-finder COMMAND"
-                , "COMMAND = ovd URL | find_in_vk FULL_NAME | find_in_vk - OUT_FILE"
-                ]
+usage :: Text
+usage = T.unlines [ "Usage: ruz-finder COMMAND"
+                  , "COMMAND = ovd URL | find_in_vk FULL_NAME | find_in_vk - OUT_FILE"
+                  ]
+
+runVK'' :: '[ Embed IO, Error Text ] `Members` r => InterpreterFor VK r
+runVK'' act = do
+    accessToken <- getAccessToken
+    interpretHttpIO $ runVK' accessToken $ raiseUnder act
 
 main :: IO ()
-main = getArgs >>=
-    \case
-        [] -> Prelude.error usage
-        ["ovd"] -> Prelude.error "missing URL"
-        ["ovd", ovdUrl] -> fromOVD ovdUrl
-        ["find_in_vk"] -> Prelude.error "missing FULL_NAME"
-        ["find_in_vk", "-"] -> Prelude.error "missing OUT_FILE"
-        ["find_in_vk", inFile, outFile] -> do
+main = getArgs >>= displayConsoleRegions
+                    . runFinal . embedToFinal @IO
+                    . (>>= either (embed . T.putStrLn . ("ERROR: " <>)) pure)
+                    . runError
+    . \case
+        [] -> throwT usage
+        ["ovd"] -> throwT "missing URL"
+        ["ovd", ovdUrl] -> runVK'' $ fromOVD ovdUrl
+        ["find_in_vk"] -> throwT "missing FULL_NAME"
+        ["find_in_vk", "-"] -> throwT "missing OUT_FILE"
+        ["find_in_vk", fullName'] -> runVK'' do
+            let fullName = T.pack fullName'
+            findInVKMany [fullName]
+                >>= traverse_ (embed . T.putStrLn . personMatchToCsv . (fullName,))
+        ["find_in_vk", inFile, outFile] -> runVK'' do
             lns <- T.lines <$> case inFile of
-                "-" -> T.getContents
-                inFile' -> T.readFile inFile'
-            matchesCsv <- findInVKMany lns <&> fmap personMatchToCsv
+                "-" -> embed T.getContents
+                inFile' -> embed $ T.readFile inFile'
+            matchesCsv <- findInVKMany lns <&> fmap personMatchToCsv . zip lns
             let outContent = T.unlines matchesCsv
             case outFile of
-                "-" -> T.putStrLn outContent
-                outFile' -> T.writeFile outFile' outContent
-        ["find_in_vk", fullName] -> findInVKMany [T.pack fullName] >>= traverse_ (T.putStrLn . personMatchToCsv)
-        command : opts -> Prelude.error $ "command " ++ command ++ " unknown (options: " ++ unwords opts ++ ")"
+                "-" -> embed $ T.putStrLn outContent
+                outFile' -> embed $ T.writeFile outFile' outContent
+        command : opts -> throwT $ "command " <> T.pack command
+                                              <> " unknown (options: "
+                                              <> T.pack (unwords opts)
+                                              <> ")"
