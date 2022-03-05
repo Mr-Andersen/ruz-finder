@@ -34,12 +34,16 @@ import Control.Concurrent.Async.Pool
 import System.Console.AsciiProgress
 import Network.HTTP.Req (Req)
 
+import Telegram.Bot.Simple.BotApp
+import Telegram.Bot.API.MakingRequests (defaultTelegramClientEnv)
+
 import Consts
 import OVD.Types
 import OVD.HTML
 import QueryPerson
 import Ruz
 import VK hiding (id)
+import TgBot qualified
 
 permutFullNames :: [PerPerson Text] -> [PerPerson [Text]]
 permutFullNames perPerson =
@@ -146,7 +150,7 @@ withVK accessToken people = if null people then pure [] else do
 noTokenInstruction :: String
 noTokenInstruction =
     "Нет токена ВК. Перейдите по ссылке "
-        ++ "https://oauth.vk.com/authorize?client_id=8091308&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=friends,groups,offline&response_type=token&v=5.131 "
+        ++ "https://oauth.vk.com/authorize?client_id=8094092&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=327682&response_type=token&v=5.131 "
         ++ "Из адресной строки скопируйте access_token, затем export VK_TOKEN=$access_token"
 
 getAccessToken :: IO Text
@@ -212,4 +216,7 @@ main = getArgs >>=
                 "-" -> T.putStrLn outContent
                 outFile' -> T.writeFile outFile' outContent
         ["find_in_vk", fullName] -> findInVKMany [T.pack fullName] >>= traverse_ (T.putStrLn . personMatchToCsv)
+        ["bot"] -> getEnvToken "TG_TOKEN"
+                    >>= defaultTelegramClientEnv
+                    >>= startBot_ TgBot.bot
         command : opts -> Prelude.error $ "command " ++ command ++ " unknown (options: " ++ unwords opts ++ ")"

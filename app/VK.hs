@@ -18,11 +18,18 @@ import Data.Text (Text)
 import Data.Text qualified as T
 -- import Data.Text.IO qualified as T
 
+import GHC.Clock (getMonotonicTime)
+import System.IO.Unsafe (unsafePerformIO)
+import GHC.Float.RealFracMethods
+import Control.Concurrent.STM
+import Control.Concurrent.STM.Delay
+
+import Numeric.MathFunctions.Constants (m_neg_inf)
+
 import GHC.Generics (Generic)
 import Data.Aeson
 import Data.Aeson.Types (parseEither)
 
-import Control.Concurrent (threadDelay)
 import Network.HTTP.Req
 
 -- import Debug.Trace
@@ -33,7 +40,7 @@ data VKConfig = VKC
 
 type VKT m = ReaderT VKConfig m
 
-type HasVK m = (MonadReader VKConfig m, MonadHttp m)
+type HasVK m = (MonadReader VKConfig m, MonadHttp m, MonadIO m)
 
 data VkResponseError = VkResponseError
     { error_code :: Integer
@@ -55,11 +62,25 @@ class FromJSON response => VKEndoint endpoint request response | endpoint -> req
     requestToOption :: endpoint -> request -> Option 'Https
     maxCount :: endpoint -> Maybe Integer
 
+lastTimeVKRequested :: TMVar Double -- in seconds
+lastTimeVKRequested = unsafePerformIO $ newTMVarIO m_neg_inf
+
+vkDelay :: Double -- in seconds
+vkDelay = 0.25
+
 -- reqVK :: FromJSON (w a) => Text -> Option 'Https -> VKT m (w a)
 reqVK :: (HasVK m, VKEndoint endpoint request response) => endpoint -> request -> m (Either Text response)
 reqVK e reqData = do
     config <- ask
     let opt = requestToOption e reqData
+
+    lastTime <- liftIO $ atomically do
+        takeTMVar lastTimeVKRequested
+    currTime <- liftIO getMonotonicTime
+    delay <- liftIO $ newDelay $ ceilingDoubleInt $ (currTime - lastTime + vkDelay) * 1000000
+    liftIO $ atomically do
+        waitDelay delay
+
     reqResult <- req GET (https "api.vk.com" /: "method" /: path e)
         NoReqBody
         jsonResponse
@@ -67,7 +88,11 @@ reqVK e reqData = do
               <> "v" =: ("5.131" :: Text))
             & maybe Prelude.id ((<>) . ("count" =:)) (maxCount e))
         <&> responseBody
-    liftIO (threadDelay (300 * 1000))
+
+    lastTime' <- liftIO getMonotonicTime
+    liftIO $ (atomically $ tryPutTMVar lastTimeVKRequested lastTime') >>= flip unless do
+        putStrLn "WARNING: tryPutTMVar returned False"
+
     pure case reqResult of
         VKROk respOk -> Right respOk
         VKRErr (VkResponseError _ msg) -> Left msg
