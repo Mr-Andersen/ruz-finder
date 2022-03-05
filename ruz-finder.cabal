@@ -15,7 +15,7 @@ cabal-version:       >=1.10
 
 executable ruz-finder
   main-is:             Main.hs
-  other-modules:       OVD.Types OVD.HTML QueryPerson Ruz VK TgBot Consts
+  other-modules:       OVD.Types OVD.HTML QueryPerson Ruz VK VK.Find TgBot Consts Utils
   hs-source-dirs:      app
   ghc-options:         -O2 -Wall -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
@@ -24,6 +24,7 @@ executable ruz-finder
                      , DataKinds
                      , DeriveFunctor
                      , DeriveGeneric
+                     , DuplicateRecordFields
                      , ExistentialQuantification
                      , FlexibleContexts
                      , FlexibleInstances
@@ -32,6 +33,7 @@ executable ruz-finder
                      , KindSignatures
                      , LambdaCase
                      , MultiParamTypeClasses
+                     , NamedFieldPuns
                      , OverloadedStrings
                      , QuasiQuotes
                      , Rank2Types

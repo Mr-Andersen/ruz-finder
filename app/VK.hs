@@ -1,4 +1,4 @@
-{-# LANGUAGE DuplicateRecordFields, ConstraintKinds #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 module VK where
 
