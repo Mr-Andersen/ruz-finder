@@ -58,7 +58,7 @@ findVKAccount accessToken fullName = runVKTIO accessToken $ runExceptTReporting 
         Left err -> throwError err
         Right ok -> pure ok
     let (usrsWithUni, usrsNoUni) =
-            partition (\u -> hseUniId `elem` (universityId <$> fromMaybe [] (universities u))) usrs
+            partition (\u -> (`Set.member` hseUniIds) `any` (universityId <$> fromMaybe [] (universities u))) usrs
     -- -- Пользователи с университетом = ВШЭ
     -- let usrsWithUni =
     --         filter (\u -> hseUniId `elem` (universityId <$> fromMaybe [] (universities u))) usrs
