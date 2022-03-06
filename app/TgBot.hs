@@ -15,7 +15,8 @@ import Telegram.Bot.Simple.Reply
 
 import VK.Find
 
-data Action = FindPerson { _author :: User
+data Action = Start
+            | FindPerson { _author :: User
                          , _fullNames :: [Text]
                          }
             | SendResult { _author :: User
@@ -30,6 +31,7 @@ bot accessToken = BotApp
     , botJobs = [] }
 
 action :: Update -> Text -> Maybe Action
+action Update { updateMessage = Just Message { messageText = Just "/start" } } _ = Just Start
 action Update { updateMessage = Just Message { messageFrom = Just from
                                              , messageText = Just text
                                              }
@@ -37,6 +39,7 @@ action Update { updateMessage = Just Message { messageFrom = Just from
 action _ _ = Nothing
 
 handler :: Action -> Text -> Eff Action Text
+handler Start accessToken = pure accessToken
 handler (FindPerson author fullNames) accessToken =
     Eff do
         tell

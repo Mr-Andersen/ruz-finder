@@ -54,6 +54,10 @@ hseGroups =
         , ("artclub_hse", 166280924)
         , ("tea_culture_club_hse", 204307519)
         , ("hsepubliclawclub", 201485148)
+        , ("podslushanoxce", 185134520)
+        , ("hsegreen", 126246699)
+        , ("hseteachers", 63442801)
+        , ("studsciencehse", 202400424)
         ]
 
 hseUniId :: UniversityId

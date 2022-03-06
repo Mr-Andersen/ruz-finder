@@ -77,7 +77,7 @@ reqVK e reqData = do
     lastTime <- liftIO $ atomically do
         takeTMVar lastTimeVKRequested
     currTime <- liftIO getMonotonicTime
-    delay <- liftIO $ newDelay $ ceilingDoubleInt $ (currTime - lastTime + vkDelay) * 1000000
+    delay <- liftIO $ newDelay $ ceilingDoubleInt $ (vkDelay + lastTime - currTime) * 1000000
     liftIO $ atomically do
         waitDelay delay
 

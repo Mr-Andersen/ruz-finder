@@ -3,6 +3,7 @@ module VK.Find where
 import Control.Monad.IO.Class
 import Data.Traversable (for)
 import Data.Functor
+import Data.List (partition)
 import Data.List.Split (chunksOf)
 import Data.Maybe (catMaybes, fromMaybe)
 -- import Data.Traversable (for)
@@ -55,12 +56,14 @@ findVKAccount accessToken fullName = runVKTIO accessToken $ runExceptTReporting 
     usrs <- case usrsRes of
         Left err -> throwError err
         Right ok -> pure ok
-    -- Пользователи с университетом = ВШЭ
-    let usrsWithUni =
-            filter (\u -> hseUniId `elem` (universityId <$> fromMaybe [] (universities u))) usrs
-    -- Пользователи без указанного у.
-    let usrsNoUni =
-            filter (null . universities) usrs
+    let (usrsWithUni, usrsNoUni) =
+            partition (\u -> hseUniId `elem` (universityId <$> fromMaybe [] (universities u))) usrs
+    -- -- Пользователи с университетом = ВШЭ
+    -- let usrsWithUni =
+    --         filter (\u -> hseUniId `elem` (universityId <$> fromMaybe [] (universities u))) usrs
+    -- -- Пользователи без указанного у.
+    -- let usrsNoUni =
+    --         filter (maybe True null . universities) usrs
     usrsWithGrps <- catMaybes <$> if null usrsNoUni then pure [] else do
         pb <- liftIO $ newProgressBar def { pgFormat = "Getting subs :percent [:bar] :current/:total elapsed :elapseds, ETA :etas"
                                           , pgTotal = toInteger (length usrsNoUni)
