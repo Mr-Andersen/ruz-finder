@@ -31,6 +31,8 @@ import System.Console.AsciiProgress
 import Telegram.Bot.Simple.BotApp
 import Telegram.Bot.API.MakingRequests (defaultTelegramClientEnv)
 
+import Debug.Trace
+
 import OVD.Types
 import OVD.HTML
 import QueryPerson
@@ -71,7 +73,7 @@ withVK accessToken people = if null people then pure [] else do
             -- Most VK users have only surname and name
             let fullName = dropPatronymic fullName'
              in (memo (findVKAccount accessToken) fullName <* liftIO (tick pb)) <&>
-                    (\uids -> PerPerson (Person fullName' info) uids city loc) . fmap matchId
+                    (\uids -> PerPerson (Person fullName' info) uids city loc)
 
 noTokenInstruction :: String
 noTokenInstruction =
@@ -91,7 +93,7 @@ fromOVD ovdUrl = do
 
     (oldNames :: [Text]) <- T.readFile allCsv <&> T.lines -- <&> Set.fromList
     let (oldNamesWords :: [Set Text]) = oldNames <&> T.words <&> Set.fromList
-    parsed <- fromMaybe [] <$> scrapeURL ovdUrl byCityInBody
+    parsed <- fromMaybe (trace "ERROR PARSING OVD" []) <$> scrapeURL ovdUrl byCityInBody
     -- parsed <- T.readFile "raw.html" >>= flip scrapeStringLikeT byCityInBody <&> fromMaybe []
     let flattened = parsed
                   & flattenByCity

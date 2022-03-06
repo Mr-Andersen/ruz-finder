@@ -37,7 +37,8 @@ vkIdToText (UserId uid) = "https://vk.com/id" <> T.pack (show uid)
 
 vkAccMatchToCsv :: VKAccMatch -> Text
 vkAccMatchToCsv (MatchUni uid) = vkIdToText uid <> " (совпал университет)"
-vkAccMatchToCsv (GroupsMatch uid grps) = vkIdToText uid <> " (совпало групп: " <> T.pack (show $ length grps) <> ")"
+vkAccMatchToCsv (GroupsMatch uid grps) =
+    vkIdToText uid <> " (совпало групп " <> T.pack (show $ length grps) <> ": " <> T.unwords (fst <$> grps) <> ")"
 
 findHseGroupsIn :: Set GroupId -> [(Text, GroupId)]
 findHseGroupsIn grps = filter (\(_, gid) -> gid `Set.member` grps) hseGroups
@@ -79,11 +80,12 @@ findVKAccount accessToken fullName = runVKTIO accessToken $ runExceptTReporting 
                 Right gids' -> let (gids :: [Set GroupId]) = maybe mempty Set.fromList <$> gids'
                                 in pure (zip uidChunk gids)
         pure $ pairs <&> \(uid, subs) ->
-                           if length (findHseGroupsIn subs) > 0
-                               then Just (uid, findHseGroupsIn subs)
-                               else Nothing
+                          let hseSubs = findHseGroupsIn subs
+                           in if length hseSubs > 0
+                                 then Just $ GroupsMatch uid hseSubs
+                                 else Nothing
     pure $ fmap (MatchUni . userId) usrsWithUni
-            ++ fmap (\(uid, grps) -> GroupsMatch uid grps) usrsWithGrps
+            ++ usrsWithGrps
 
 findInVKMany :: MonadIO io => Text -> [Text] -> io [(Text, [VKAccMatch])]
 findInVKMany accessToken people = do

@@ -56,8 +56,9 @@ data VKResponse a = VKROk { response :: a }
 instance FromJSON a => FromJSON (VKResponse a) where
     parseJSON = genericParseJSON defaultOptions { sumEncoding = UntaggedValue }
 
-class FromJSON response => VKEndoint endpoint request response | endpoint -> request
-                                                               , endpoint -> response where
+class (FromJSON response, Show request)
+    => VKEndoint endpoint request response | endpoint -> request
+                                           , endpoint -> response where
     path :: endpoint -> Text
     requestToOption :: endpoint -> request -> Option 'Https
     maxCount :: endpoint -> Maybe Integer
@@ -126,12 +127,16 @@ data UsersSearchRequest = UsersSearchRequest
     -- , fields :: Maybe [Text]
     , _university :: Maybe UniversityId }
 
+instance Show UsersSearchRequest where
+    show UsersSearchRequest { _q = q, _university = u } =
+        "q = " ++ maybe "null" T.unpack q ++ ", university = " ++ maybe "null" (\(UniversityId i) -> show i) u
+
 data University = University
     { id :: UniversityId }
     deriving (Generic, Show)
 
 universityId :: University -> UniversityId
-universityId (University uid) = uid
+universityId University { id = uid } = uid
 
 instance FromJSON University
 
@@ -151,7 +156,7 @@ data UsersSearch = UsersSearch
 instance VKEndoint UsersSearch UsersSearchRequest (VKPage User) where
     path UsersSearch = "users.search"
     requestToOption UsersSearch request =
-        ("fields" =: ("universities" :: Text))
+        ("fields" =: ("universities,uni_year" :: Text))
             & maybe Prelude.id ((<>) . ("q" =:)) (_q request)
             & maybe Prelude.id ((<>) . ("university" =:) . coerce @UniversityId @Integer) (_university request)
     maxCount UsersSearch = Just 1000
@@ -163,6 +168,7 @@ usersSearch = fmap (fmap items) . reqVK UsersSearch
 
 newtype GetSubscriptionsRequest = GetSubscriptionsRequest
     { _userId :: UserId }
+    deriving (Show)
 
 data GetSubscriptionsResponse = GetSubscriptionsResponse
     { users :: VKPage UserId
@@ -184,7 +190,7 @@ getSubscriptions = fmap (fmap (items . groups)) . reqVK GetSubscriptions
 
 data ExecuteRequest = ExecuteRequest
     { code :: Text }
-    deriving (Generic)
+    deriving (Generic, Show)
 
 data Execute = Execute
 instance VKEndoint Execute ExecuteRequest Value where
