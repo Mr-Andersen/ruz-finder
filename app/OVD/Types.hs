@@ -10,7 +10,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 -- import Data.Text.IO qualified as T
 
-import VK qualified
+import VK.Find qualified as VK
 
 data Person f = Person { _fullName :: f, _info :: Text }
 instance Show (Person Text) where
@@ -33,7 +33,7 @@ data ByLoc f = ByLoc { _loc :: Location, _people :: [Person f] }
 data ByCity f = ByCity { _city :: City, _byLoc :: [ByLoc f] }
     -- deriving (Show)
 
-data PerPerson f = PerPerson (Person f) [VK.UserId] City Location
+data PerPerson f = PerPerson (Person f) [VK.VKAccMatch] City Location
 
 perPersonFullName :: PerPerson f -> f
 perPersonFullName (PerPerson (Person f _) _ _ _) = f
@@ -46,10 +46,10 @@ flattenByCity byCity = do
     pure (PerPerson person [] city loc)
 
 perPersonToCsv :: PerPerson Text -> Text
-perPersonToCsv (PerPerson (Person fullName info) uids (City city) loc) =
+perPersonToCsv (PerPerson (Person fullName info) mchs (City city) loc) =
     T.intercalate "," [ fullName
-                      , T.unwords
-                            ((\(VK.UserId uid) -> "https://vk.com/id" <> T.pack (show uid)) <$> uids)
+                      , T.unwords $ VK.vkAccMatchToCsv <$> mchs
+                            -- ((\(VK.UserId uid) -> "https://vk.com/id" <> T.pack (show uid)) <$> uids)
                       , info, city, locToCsv loc
                       ]
 

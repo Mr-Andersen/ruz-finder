@@ -17,10 +17,11 @@ executable ruz-finder
   main-is:             Main.hs
   other-modules:       OVD.Types OVD.HTML
                      , Polysemy.Cache
+                     , VK.Core VK.Interpreter VK.Find VK
+                     , Consts
                      , QueryPerson
                      , Ruz
-                     , VK.Core VK.Interpreter VK
-                     , Consts Utils
+                     , Utils
   hs-source-dirs:      app
   ghc-options:         -O2 -Wall -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
@@ -56,6 +57,7 @@ executable ruz-finder
                      , containers
                      , http-client
                      , lens
+                     , math-functions
                      , polysemy
                      , polysemy-conc
                      , polysemy-http
@@ -63,4 +65,6 @@ executable ruz-finder
                      , regex
                      , scalpel
                      , split
+                     , stm
+                     , stm-delay
                      , text

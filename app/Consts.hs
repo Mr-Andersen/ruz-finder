@@ -2,7 +2,17 @@ module Consts where
 
 import Data.Text (Text)
 
+import Data.Set (Set)
+import Data.Set qualified as Set
+
 import VK
+
+hseUniIds :: Set UniversityId
+hseUniIds = Set.fromList $ UniversityId <$> [ 128 -- Мск
+                                            , 17 -- Спб
+                                            , 2241 -- Пермь
+                                            , 1179 -- НН
+                                            ]
 
 hseGroups :: [(Text, GroupId)]
 hseGroups =
@@ -54,7 +64,8 @@ hseGroups =
         , ("artclub_hse", 166280924)
         , ("tea_culture_club_hse", 204307519)
         , ("hsepubliclawclub", 201485148)
+        , ("podslushanoxce", 185134520)
+        , ("hsegreen", 126246699)
+        , ("hseteachers", 63442801)
+        , ("studsciencehse", 202400424)
         ]
-
-hseUniId :: UniversityId
-hseUniId = UniversityId 128
