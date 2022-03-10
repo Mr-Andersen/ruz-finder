@@ -1,3 +1,33 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:b606ab0003113ab4e7cb087dce70d8b21835a6aae6ca8a437525d0145d5104dd
-size 756
+{ config, lib, pkgs, ... }:
+let inherit (lib) mkIf mkOption types;
+ in {
+  options.services.ruz-finder-bot = {
+    enable = mkOption {
+      type = types.bool;
+      default = false;
+    };
+    telegram-token = mkOption {
+      type = types.str;
+    };
+    vk-token = mkOption {
+      type = types.str;
+    };
+  };
+
+  config =
+    let cfg = config.services.ruz-finder-bot;
+     in mkIf cfg.enable
+    {
+      systemd.services.ruz-finder-bot = {
+        enable = true;
+        environment = {
+          VK_TOKEN = cfg.vk-token;
+          TG_TOKEN = cfg.telegram-token;
+        };
+        script = ''
+          ${(import ./.).ruz-finder.components.exes.ruz-finder}/bin/ruz-finder bot
+        '';
+        wantedBy = [ "multi-user.target" ];
+      };
+    };
+}

@@ -1,3 +1,17 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:97311e6dbde4fd4cbbe14dfc8576b8a013a57c5d7cfc190004200237dda095cb
-size 370
+module QueryPerson where
+
+import Control.Monad.IO.Class (MonadIO)
+import Data.Text (Text)
+
+import GHC.Generics (Generic)
+import Data.Aeson (FromJSON)
+
+data QueryResult = QueryResult
+    { label :: Text
+    , description :: Text }
+    deriving (Generic)
+
+instance FromJSON QueryResult
+
+class QueryPerson s where
+    query :: MonadIO io => s -> [Text] -> io [QueryResult]

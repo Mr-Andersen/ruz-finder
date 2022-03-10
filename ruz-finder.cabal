@@ -1,3 +1,60 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:ca768883693dd0da6a3bd18befce959157d4d946407b363de4ec78e60cfe192e
-size 2107
+name:                ruz-finder
+version:             0.1.0.0
+-- synopsis:
+-- description:
+-- homepage:
+license:             BSD3
+license-file:        LICENSE
+author:              Author name here
+maintainer:          example@example.com
+copyright:           2022 Author name here
+category:            Web
+build-type:          Simple
+cabal-version:       >=1.10
+-- extra-source-files:  README.md
+
+executable ruz-finder
+  main-is:             Main.hs
+  other-modules:       OVD.Types OVD.HTML QueryPerson Ruz VK VK.Find TgBot Consts Utils
+  hs-source-dirs:      app
+  ghc-options:         -O2 -Wall -threaded -rtsopts "-with-rtsopts=-N -I0"
+  default-language:    Haskell2010
+  default-extensions:  BangPatterns
+                     , BlockArguments
+                     , DataKinds
+                     , DeriveFunctor
+                     , DeriveGeneric
+                     , DuplicateRecordFields
+                     , ExistentialQuantification
+                     , FlexibleContexts
+                     , FlexibleInstances
+                     , FunctionalDependencies
+                     , ImportQualifiedPost
+                     , KindSignatures
+                     , LambdaCase
+                     , MultiParamTypeClasses
+                     , NamedFieldPuns
+                     , OverloadedStrings
+                     , QuasiQuotes
+                     , Rank2Types
+                     , ScopedTypeVariables
+                     , TupleSections
+                     , TypeApplications
+                     , TypeFamilies
+                     , UnicodeSyntax
+  build-depends:       ascii-progress
+                     , async-pool
+                     , base
+                     , containers
+                     , monad-memo
+                     , math-functions
+                     , mtl
+                     , regex
+                     , req, aeson
+                     , scalpel
+                     , split
+                     , stm
+                     , stm-delay
+                     , telegram-bot-simple
+                     , text
+                     -- , generic-deriving
