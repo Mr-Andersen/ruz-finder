@@ -1,26 +1,3 @@
-let
-  sources = {
-    haskellNix = builtins.fetchTarball "https://github.com/input-output-hk/haskell.nix/archive/master.tar.gz";
-  };
-
-  # Fetch the haskell.nix commit we have pinned with Niv
-  haskellNix = import sources.haskellNix {};
-
-  # Import nixpkgs and pass the haskell.nix provided nixpkgsArgs
-  pkgs = import
-    # haskell.nix provides access to the nixpkgs pins which are used by our CI,
-    # hence you will be more likely to get cache hits when using these.
-    # But you can also just use your own, e.g. '<nixpkgs>'.
-    haskellNix.sources.nixpkgs-unstable
-    # These arguments passed to nixpkgs, include some patches and also
-    # the haskell.nix functionality itself as an overlay.
-    haskellNix.nixpkgsArgs;
-in pkgs.haskell-nix.project {
-  # 'cleanGit' cleans a source directory based on the files known by git
-  src = pkgs.haskell-nix.haskellLib.cleanGit {
-    name = "haskell-nix-project";
-    src = ./.;
-  };
-  # Specify the GHC version to use.
-  # compiler-nix-name = "ghc8102"; # Not required for `stack.yaml` based projects.
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:c436b8fa567e4cddc352302082c9774c9d5219ba3734b173ff208d8c1582a09f
+size 1053

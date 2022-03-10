@@ -1,17 +1,3 @@
-let
-  pkgs = import <nixpkgs> {};
-  inherit (pkgs) dockerTools;
-
-  project = import ./.;
-  inherit (project) ruz-finder;
-  inherit (ruz-finder.identifier) name version;
-  ruz-finder-bin = ruz-finder.components.exes.ruz-finder;
-in dockerTools.buildImage {
-  inherit name;
-  tag = version;
-
-  contents = [ ruz-finder-bin ];
-  config = {
-    Entrypoint = [ "${ruz-finder-bin}/bin/ruz-finder" ];
-  };
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:4cf8d7a8ff620ec62b21f3af4c8a221544b09c6d1697546a826947ef47da883d
+size 399
