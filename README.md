@@ -14,5 +14,5 @@
 ## Токен для доступа к ВК
 Для работы каждой подпрограммы нужна переменная среды `VK_TOKEN`.
 Получение:
-- Перейти по https://oauth.vk.com/authorize?client_id=8091308&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=friends,groups,offline&response_type=token&v=5.131
+- Перейти по https://oauth.vk.com/authorize?client_id=8094092&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=327682&response_type=token&v=5.131
 - Из адресной строки скопировать access_token
