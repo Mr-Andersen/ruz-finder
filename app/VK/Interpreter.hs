@@ -25,7 +25,7 @@ import VK.Core
 import Utils
 
 data VKConfig = VKC
-    { _accessToken :: Text }
+    { accessToken :: Text }
 
 data VkResponseError = VkResponseError
     { error_code :: Integer
@@ -48,7 +48,6 @@ vkDelay :: Double -- in seconds
 vkDelay = 0.25
 
 -- | Interpreter
--- (HasVK m, VKEndoint endpoint request response) => endpoint -> request -> m (Either Text response)
 runVK :: '[ Embed IO, Http BodyReader, Error Text ] `Members` r => VKConfig -> InterpreterFor VK r
 runVK config = interpret \(ReqVK e reqData) -> do
     let opts = requestToOption e reqData
@@ -63,7 +62,7 @@ runVK config = interpret \(ReqVK e reqData) -> do
     reqResult <- getJSON
         "api.vk.com"
         (Path $ "method" <> path e)
-        (("access_token", Just $ QueryValue $ _accessToken config)
+        (("access_token", Just $ QueryValue config.accessToken)
             : ("v", Just "5.131")
             : opts)
 
@@ -76,4 +75,4 @@ runVK config = interpret \(ReqVK e reqData) -> do
         VKRErr (VkResponseError _ msg) -> throw msg
 
 runVK' :: '[ Embed IO, Http BodyReader, Error Text ] `Members` r => Text -> InterpreterFor VK r
-runVK' = runVK . VKC
+runVK' at = runVK (VKC at)

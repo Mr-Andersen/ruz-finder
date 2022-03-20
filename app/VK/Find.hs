@@ -52,16 +52,18 @@ findVKAccount fullName = do
     usrs <- usersSearch (UsersSearchRequest (Just fullName) Nothing)
     -- Пользователи с университетом = ВШЭ
     let usrsWithUni =
-            filter (\u -> (`Set.member` hseUniIds) `any` (universityId <$> fromMaybe [] (universities u))) usrs
+            filter
+                (\u -> (`Set.member` hseUniIds) `any` (universityId <$> fromMaybe [] u.universities))
+                usrs
     -- Пользователи без указанного у.
     let usrsNoUni =
-            filter (maybe False null . universities) usrs
+            filter (maybe False null . (.universities)) usrs
     usrsWithGrps <- catMaybes <$> if null usrsNoUni then pure [] else do
         pb <- embed $ newProgressBar def { pgFormat = "Getting subs :percent [:bar] :current/:total elapsed :elapseds, ETA :etas"
                                          , pgTotal = toInteger (length usrsNoUni)
                                          }
         -- Блоки id по 25 штук
-        let uidChunks = chunksOf 25 (userId <$> usrsNoUni)
+        let uidChunks = chunksOf 25 ((.id) <$> usrsNoUni)
         -- Пары пользователь-группы (если есть)
         (pairs :: [(UserId, Set GroupId)]) <- concat <$> for uidChunks \uidChunk -> do
             let script = getSubscriptionsScript uidChunk
@@ -72,7 +74,7 @@ findVKAccount fullName = do
                            if length (findHseGroupsIn subs) > 0
                                then Just (uid, findHseGroupsIn subs)
                                else Nothing
-    pure $ fmap (MatchUni . userId) usrsWithUni
+    pure $ fmap (MatchUni . (.id)) usrsWithUni
             ++ fmap (\(uid, grps) -> GroupsMatch uid grps) usrsWithGrps
 
 findInVKMany :: '[ Embed IO, VK, Error Text ] `Members` r

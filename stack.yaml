@@ -17,7 +17,7 @@
 #
 # resolver: ./custom-snapshot.yaml
 # resolver: https://example.com/snapshots/2018-01-01.yaml
-resolver: lts-18.27
+resolver: nightly-2022-03-19
 
 nix:
   enable: true
@@ -45,15 +45,16 @@ packages:
 #
 extra-deps:
 - polysemy-1.7.1.0
-- polysemy-plugin-0.4.3.0
-- polysemy-http-0.5.0.0
-- polysemy-log-0.5.0.0@sha256:d64c58c7265049106e60b24f3874eb48722b4676dec045b1fbf96d912cb33f84,4954
-- incipit-core-0.1.0.3@sha256:3ebf8e29d5b4c1137ee2d8daa9d852bd2baeb4dad2355a07dc6dbf167500278d,3272
-- polysemy-conc-0.6.0.1@sha256:9a9f7350b342049f114f3f436942ed8dc4b18f14cb86b37db6e28dc2ebec681f,6006
-- polysemy-time-0.3.0.0@sha256:1a9f1014ca7e96cd55a5fb308129ee40a9b6102bb53734a32bc6a4885dc5c0d8,4465
-- incipit-base-0.1.0.3@sha256:dbe99beaa93fea5f067adf1ca8b4ec60129e341659d157572b7f43407305339d,3422
-- polysemy-resume-0.3.0.0@sha256:aa6e54576efbe11f20502b1fcbc8f8acf59168319a7756fa2618891e196281c6,4226
-
+- polysemy-http-0.7.0.0
+- polysemy-conc-0.7.0.0
+- polysemy-log-0.6.0.1
+- polysemy-resume-0.4.0.0
+- polysemy-time-0.4.0.0
+- incipit-core-0.2.0.0
+- incipit-base-0.2.0.0
+- incipit-0.2.1.0
+- exon-0.3.0.0
+- flatparse-0.3.2.0
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

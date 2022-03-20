@@ -4,9 +4,8 @@ module VK.Core where
 
 import Data.Text (Text)
 
-import Polysemy (Effect, InterpreterFor, Member, makeSem)
-import Polysemy.Http (Http, QueryKey, QueryValue)
-import Network.HTTP.Client (BodyReader)
+import Polysemy (Effect, makeSem)
+import Polysemy.Http (QueryKey, QueryValue)
 
 import Data.Aeson
 

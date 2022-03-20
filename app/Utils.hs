@@ -5,18 +5,14 @@ import Data.Text qualified as T
 
 import Polysemy -- (Sem, Members)
 import Polysemy.Error (Error, throw)
-import Polysemy.Log (Log, interpretLogStderr')
-import Polysemy.Resource (Resource, resourceToIO)
-import Polysemy.Conc (Mask)
-import Polysemy.Conc.Interpreter.Mask (Restoration)
+import Polysemy.Log (interpretLogStderr')
+import Polysemy.Resource (resourceToIO)
 
 import Polysemy.Http
 import Polysemy.Http.Data.Request (query)
 import Network.HTTP.Client (BodyReader)
 
 import Control.Lens
-
-import System.Environment
 
 import Data.Aeson (FromJSON, eitherDecode)
 

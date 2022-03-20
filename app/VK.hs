@@ -10,7 +10,6 @@ module VK ( VK
           , University(University)
           , universityId
           , User(..)
-          , userId
           , UsersSearch(..)
           , usersSearch
           , GetSubscriptionsRequest(..)
@@ -60,9 +59,9 @@ instance FromJSON UniversityId
 -- ^ Utils
 
 data UsersSearchRequest = UsersSearchRequest
-    { _q :: Maybe Text
+    { q :: Maybe Text
     -- , fields :: Maybe [Text]
-    , _university :: Maybe UniversityId }
+    , university :: Maybe UniversityId }
 
 data University = University
     { id :: UniversityId }
@@ -80,9 +79,6 @@ data User = User
     , universities :: Maybe [University] }
     deriving (Generic, Show)
 
-userId :: User -> UserId
-userId (User uid _ _ _) = uid
-
 instance FromJSON User
 
 data UsersSearch = UsersSearch
@@ -90,9 +86,9 @@ instance VKEndoint UsersSearch UsersSearchRequest (VKPage User) where
     path UsersSearch = "users.search"
     requestToOption UsersSearch request =
         [("fields", Just "universities")]
-            & (_q request
+            & (request.q
                 & maybe Prelude.id (QueryValue >>> Just >>> ("q",) >>> (:)))
-            & (_university request
+            & (request.university
                 & maybe Prelude.id (
                     show >>> T.pack
                     >>> QueryValue >>> Just
@@ -100,12 +96,12 @@ instance VKEndoint UsersSearch UsersSearchRequest (VKPage User) where
     maxCount UsersSearch = Just 1000
 
 usersSearch :: VK `Member` r => UsersSearchRequest -> Sem r [User]
-usersSearch = fmap items . reqVK UsersSearch
+usersSearch = fmap (.items) . reqVK UsersSearch
 
 -- ^ users.search
 
 newtype GetSubscriptionsRequest = GetSubscriptionsRequest
-    { _userId :: UserId }
+    { userId :: UserId }
 
 data GetSubscriptionsResponse = GetSubscriptionsResponse
     { users :: VKPage UserId
@@ -118,11 +114,11 @@ data GetSubscriptions = GetSubscriptions
 instance VKEndoint GetSubscriptions GetSubscriptionsRequest GetSubscriptionsResponse where
     path GetSubscriptions = "users.getSubscriptions"
     requestToOption GetSubscriptions (GetSubscriptionsRequest (UserId uid)) =
-        [("user_id", uid & show & T.pack& QueryValue & Just )]
+        [("user_id", uid & show & T.pack & QueryValue & Just )]
     maxCount GetSubscriptions = Just 200
 
 getSubscriptions :: VK `Member` r => GetSubscriptionsRequest -> Sem r [GroupId]
-getSubscriptions = fmap (items . groups) . reqVK GetSubscriptions
+getSubscriptions = fmap ((.items) . (.groups)) . reqVK GetSubscriptions
 
 -- ^ users.getSubscriptions
 
