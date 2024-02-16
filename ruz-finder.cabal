@@ -60,5 +60,6 @@ executable ruz-finder
                      , split
                      -- , stm
                      -- , stm-delay
+                     , telegram-bot-api
                      , telegram-bot-simple
                      , text

@@ -3,6 +3,7 @@ module VK.Find where
 import Consts
 import Control.Concurrent.Async.Pool
 import Control.Monad.Except
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Functor
 import Data.List (partition)
 import Data.List.Split (chunksOf)

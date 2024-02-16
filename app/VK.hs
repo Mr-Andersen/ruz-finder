@@ -7,6 +7,7 @@ import Prelude qualified
 
 import Control.Category ((>>>))
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
+import Control.Monad (when)
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Data.Aeson

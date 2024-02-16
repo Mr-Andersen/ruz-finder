@@ -4,9 +4,10 @@ packages:
 - .
 
 extra-deps:
+- telegram-bot-api-7.0
+- telegram-bot-simple-0.13
 - git: https://github.com/MichaelXavier/cron
   commit: d9193309bd06b04607898212f9c477af4894c021
-  # nix-sha256: 1jbn9n3dykczi98bv1vrwhalwvyf4xpdp2cygr3xzsz2q652jpj7
 
 # nix:
 #   enable: true
