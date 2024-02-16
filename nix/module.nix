@@ -28,7 +28,7 @@ in
           TG_TOKEN = cfg.tg-token;
         };
         script = ''
-          ${self.packages.${pkgs.system}.default} bot
+          ${self.packages.${pkgs.system}.default}/bin/ruz-finder bot
         '';
         wantedBy = [ "multi-user.target" ];
         serviceConfig = {
