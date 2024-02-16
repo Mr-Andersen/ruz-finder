@@ -1,0 +1,13 @@
+resolver: lts-22.11
+
+packages:
+- .
+
+extra-deps:
+- git: https://github.com/MichaelXavier/cron
+  commit: d9193309bd06b04607898212f9c477af4894c021
+  # nix-sha256: 1jbn9n3dykczi98bv1vrwhalwvyf4xpdp2cygr3xzsz2q652jpj7
+
+# nix:
+#   enable: true
+#   packages: [pkg-config libffi pcre zlib]

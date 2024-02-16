@@ -1,0 +1,5 @@
+.stack-work
+.vscode
+*.csv
+dist-newstyle
+result*
