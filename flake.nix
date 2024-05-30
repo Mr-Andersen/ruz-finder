@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05-small";
     stacklock2nix.url = "github:cdepillabout/stacklock2nix";
     all-cabal-hashes = {
       url = "github:commercialhaskell/all-cabal-hashes/hackage";
@@ -31,13 +31,13 @@
         ruz-finder-pkgSet = final.stacklock2nix {
           stackYaml = ./stack.yaml;
           stackYamlLock = ./stack.yaml.lock;
-          baseHaskellPkgSet = final.haskell.packages.ghc964;
+          baseHaskellPkgSet = final.haskell.packages.ghc965;
           additionalHaskellPkgSetOverrides = hfinal: hprev: {
             mkDerivation = a: hprev.mkDerivation (a // { doCheck = false; doHaddock = false; });
           };
           additionalDevShellNativeBuildInputs = stacklockHaskellPkgSet: [
             final.cabal-install
-            final.haskell.packages.ghc964.haskell-language-server
+            # final.haskell.packages.ghc965.haskell-language-server
           ];
           inherit all-cabal-hashes;
         };
@@ -65,7 +65,7 @@
       formatter = forAllSystems (system:
         let
           inherit (pkgs system) fd haskell nixpkgs-fmt writeScriptBin;
-          inherit (haskell.packages.ghc964) fourmolu;
+          inherit (haskell.packages.ghc965) fourmolu;
         in
         writeScriptBin "fourmolu-inline" ''
           set -ex
